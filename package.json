@@ -1,6 +1,6 @@
 {
   "name": "@kareem-aez/convit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Conventional commits by AI. Weighted analysis, surgical diffs, and local data sovereignty.",
   "author": "Kareem Ahmed",
   "license": "MIT",
