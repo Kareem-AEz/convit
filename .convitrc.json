@@ -1,9 +1,10 @@
 {
   "scopePatterns": [
-    { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 8 },
-    { "pattern": "src/.*", "scope": "src", "weight": 6 },
+    { "pattern": "src/([^/]+)(/.*)?", "scope": "$1", "weight": 10 },
     { "pattern": "bin/.*", "scope": "bin", "weight": 5 },
     { "pattern": "assets/.*", "scope": "assets", "weight": 5 },
-    { "pattern": ".cursor/.*", "scope": "cursor", "weight": 3 }
+    { "pattern": "\\.agents/.*", "scope": "agents", "weight": 3 },
+    { "pattern": "\\.cursor/.*", "scope": "cursor", "weight": 3 },
+    { "pattern": "^[^/]+$", "scope": "root", "weight": 4 }
   ]
 }
