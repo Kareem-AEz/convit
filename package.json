@@ -6,22 +6,27 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Kareem-AEz/the-road-to-next.git",
+    "url": "https://github.com/Kareem-AEz/convit",
     "directory": "packages/convit"
   },
   "keywords": [
     "git",
-    "commit",
-    "ai",
-    "conventional-commits",
     "cli",
-    "openai",
-    "privacy",
     "security",
+    "privacy",
+    "ai",
+    "openai",
+    "commit",
+    "data-sovereignty",
+    "conventional-commits",
     "local-llm",
-    "lm-studio",
+    "localllm",
     "ollama",
-    "data-sovereignty"
+    "lm-studio",
+    "lmstudio",
+    "developer-tools",
+    "developer-experience",
+    "dx"
   ],
   "publishConfig": {
     "access": "public"
