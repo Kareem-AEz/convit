@@ -52,7 +52,7 @@ npx @kareem-aez/convit
 This works identically with Ollama:
 
 ```env
-CONVIT_URL=http://localhost:11434/v1
+CONVIT_URL="http://localhost:11434/v1"
 ```
 
 Before any generation runs, the raw diff is scanned against eight sensitive data patterns on your local machine. The scan happens before the prompt is built, before any network call, regardless of which provider you use.
@@ -259,14 +259,14 @@ Add to `package.json`:
 **Cloud APIs:** Copy `.env.example` to `.env`:
 
 ```env
-CONVIT_URL=https://api.openai.com/v1
-CONVIT_KEY=sk-...
-CONVIT_MODEL=gpt-4o
+CONVIT_URL="https://api.openai.com/v1"
+CONVIT_KEY="sk-..."
+CONVIT_MODEL="gpt-4o"
 ```
 
 Works with OpenAI, Google Gemini, Anthropic, OpenRouter, AI Gateway, Groq, or any OpenAI-compatible endpoint. Only three things change: the URL, the API key, and the model name. Same tool. Same prompts. For Gemini, the URL must end with `/openai`. Secrets stay in `.env`. Config files are safe to commit.
 
-**Ollama:** `CONVIT_URL=http://localhost:11434/v1`. `[SECURE]` mode. No API key required.
+**Ollama:** `CONVIT_URL="http://localhost:11434/v1"`. `[SECURE]` mode. No API key required.
 
 **Project config:** `npx @kareem-aez/convit init` runs a setup wizard and writes a `.convitrc.json` tuned to your project structure. Scope patterns, file exclusions, and format rules are all configurable.
 

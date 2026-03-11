@@ -15,8 +15,8 @@ argument-hint: "[path to project root, or empty for current directory]"
 Generates a `.convitrc.json` tailored to the actual structure of the codebase.
 The config should capture Intent, not just file paths.
 
-**Quick start:** (1) Apply the Mizan Principle to find the Primary Structural
-Boundary. (2) Run Structural Analysis (Core, Depth, Noise). (3) Apply Weighting
+**Quick start:** (1) Apply the Hierarchy Principle to find the Primary Structural
+Boundary. (2) Run Structural Analysis (Full-Scan, Depth, Gitignore, Noise). (3) Apply Weighting
 Engine rules. (4) Synthesize patterns with user patterns first. (5) Ask user to
 confirm. (6) Write config.
 
@@ -27,25 +27,29 @@ For the full semantics of every variable, see [config-reference.md](config-refer
 
 ---
 
-## The Mental Model (The Mizan Principle)
+## The Mental Model (The Hierarchy Principle)
 
 Before scanning folders, identify the **Primary Structural Boundary**. This is
 the deepest semantic unit that defines how the codebase is organized. The agent
 must reason from first principles, not from a lookup table.
 
-**Domain-Driven (Weight 10).** A folder has many subdirectories. Each subdir
-contains its own index, tests, or components. Examples: `src/features/auth/`,
-`src/modules/payments/`, `lib/domains/orders/`. The subdirectory name is the
-scope. This is the highest-weight boundary.
+**Surgical Core (Weight 10/8).** Where the primary application logic lives.
+Common candidates: `src/`, `lib/`, `app/`. Domain-driven: `src/features/auth/`,
+`src/modules/payments/`, `lib/domains/orders/`. Layered: `controllers/`,
+`models/`, `views/`, or `handlers/`, `services/`, `repositories/`. Monorepo:
+`packages/` or `apps/` contains distinct projects. Each subdirectory is a
+top-level scope. Weight 10 for deepest semantic boundary, 8 for broad
+organizational folders.
 
-**Layered (Weight 8).** The root exposes functional layers: `controllers/`,
-`models/`, `views/`, or `handlers/`, `services/`, `repositories/`. The first
-segment under the core is the scope. Broad organizational folders.
+**Functional Layers (Weight 5).** Cross-cutting concerns: `ui/`, `db/`, `api/`.
+The first segment under the core is the scope when fixed. Example: `db/.*` →
+`db`, `prisma/.*` → `db`.
 
-**Monorepo (Weight 10).** `packages/` or `apps/` contains distinct projects.
-Each subdirectory is a top-level scope. Same weight as domain-driven.
+**Auxiliary Support (Weight 3/5).** The tools and documentation that support
+the project. Weight 5: `assets/`, `docs/`, `images/`. Weight 3: `.cursor/`,
+`.github/`, `scripts/`.
 
-Apply the Mizan Principle to any codebase. A 10-year-old COBOL project with
+Apply the Hierarchy Principle to any codebase. A 10-year-old COBOL project with
 `cobol/programs/`, `cobol/copybooks/`, `cobol/data/` is layered. A brand-new
 Next.js app with `src/app/(auth)/`, `src/app/(dashboard)/` is domain-driven.
 The reasoning engine adapts.
@@ -56,12 +60,20 @@ The reasoning engine adapts.
 
 Run this protocol. Do not rely on hardcoded paths.
 
-### Identify the Core
+### Full-Scan Protocol
 
-Locate where the marrow of the logic lives. Common candidates: `src/`, `lib/`,
-`app/`, or the repo root. The core is the deepest shared ancestor of most
-application code. If tests live in `tests/` at root, the core may be root. If
-tests live in `src/foo/__tests__/`, the core is `src/`.
+Scan every top-level directory. If a directory is not build noise (e.g. `.cursor`,
+`.github`, `assets`, `docs`, `scripts`), propose it as a scope. Total coverage:
+the generated config must capture the entire repo, not just application code.
+
+### Gitignore Intelligence
+
+**Primary Check.** If a directory is in `.gitignore`, skip it. Git already
+handles it. Do not propose it as a scope or add it to exclude.
+
+**Exclusion Candidate.** If a directory looks like build output (e.g. `dist/`,
+`build/`, `out/`, `target/`) but is NOT in `.gitignore`, it is a high-priority
+candidate for the exclude list. Propose adding it.
 
 ### Detect Depth
 
@@ -89,10 +101,12 @@ Apply these weights when architecting scope patterns. Higher weight wins ties.
 | **10** | Deepest semantic boundary | `src/modules/([^/]+)/.*`, `packages/([^/]+)/.*`, `crates/([^/]+)/.*` |
 | **8** | Broad organizational folders | `src/([^/]+)/.*`, `lib/([^/]+)/.*` |
 | **5** | Transversal layers | `ui/.*` → `ui`, `db/.*` → `db`, `prisma/.*` → `db` |
-| **3** | Infrastructure / tooling | `scripts/([^/]+)/.*`, `config/.*` → `config` |
+| **5** | Documentation and Media | `assets/.*`, `docs/.*`, `images/.*` |
+| **3** | Tooling and Infrastructure | `.cursor/.*`, `.github/.*`, `scripts/.*`, `config/.*` → `config` |
 
 The primary boundary gets 10. Fallback patterns (catch-all under core) get 6–8.
-Cross-cutting concerns (UI, DB, API) get 5. Scripts and config get 3.
+Cross-cutting concerns (UI, DB, API) and auxiliary docs/media get 5. Tooling,
+scripts, and config get 3.
 
 Transversal layers stay at 5 so the primary boundary (10) overrides when a file
 lives in both. Example: `src/features/auth/ui/button.tsx` should scope to `auth`,
@@ -124,18 +138,33 @@ Adjust the fallback to match the core (e.g. `lib/([^/]+)/.*` if the core is
 ## Phase 4 — Ask
 
 Present findings and ask the user to confirm or adjust. Only ask about signals
-that actually fired.
+that actually fired. Group patterns by hierarchy so the user sees how the
+project is being analyzed.
 
 ### Scope pattern prompts
 
-For each proposed scope pattern, show:
+Group proposed scope patterns under three headers:
+
+**Primary Boundary (Weight 8–10)**
 
 > "Proposed scope pattern:
 > `{ "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 }`
 > Use this? (yes / adjust / skip)"
 
-If the user wants to adjust, ask for the corrected `pattern`, `scope`, or
-`weight`.
+**Transversal Layers (Weight 5)**
+
+> "Proposed scope pattern:
+> `{ "pattern": "ui/.*", "scope": "ui", "weight": 5 }`
+> Use this? (yes / adjust / skip)"
+
+**Auxiliary Support (Weight 3)"
+
+> "Proposed scope pattern:
+> `{ "pattern": ".cursor/.*", "scope": "cursor", "weight": 3 }`
+> Use this? (yes / adjust / skip)"
+
+For each pattern, show the proposal and ask. If the user wants to adjust, ask
+for the corrected `pattern`, `scope`, or `weight`.
 
 ### Exclude path prompts
 
@@ -185,15 +214,57 @@ Rules:
 - `rules` should be omitted entirely if no rule was customized
 - Never add a `provider`, `apiKey`, `baseUrl`, or `model` key
 
-After writing, print a summary of what was configured and remind the user to
-add `CONVIT_URL`, `CONVIT_KEY`, and `CONVIT_MODEL` to `.env` if not already set.
+After writing, print a summary of what was configured. Offer to run the env
+setup script, or remind the user to add these to `.env` or `.env.local`:
+
+**Optional:** Run the env setup script to append convit vars if missing.
+
+**Before running the script, tell the user explicitly:**
+
+> I will run the `ensure-convit-env.mjs` script. It reads your `.env` or `.env.local` to check which CONVIT_* var names exist (by name only). It does not read, store, or transmit any values — no keys, no URLs, no secrets. If vars are missing, it appends placeholder lines to the file. The script output may mention local vs cloud (inferred from URL pattern) but never prints the actual URL or any credentials. You can review the script source before I run it.
+
+Only run the script after the user has seen this disclosure and has not objected.
+
+```bash
+node .cursor/skills/convit-setup/scripts/ensure-convit-env.mjs [path-to-project-root]
+```
+
+From project root, omit the path. The script checks `.env.local` first, then
+`.env`, and appends a dev-only block (with a box comment) that these vars
+should not be committed or uploaded. If the skill is installed globally, use
+the path to the skill's `scripts/` folder.
+
+Or add manually:
+
+```
+# Base URL of the OpenAI-compatible API — used for all LLM requests
+CONVIT_URL="https://api.openai.com/v1"
+# CONVIT_URL="http://localhost:1234/v1"   # LM Studio
+# CONVIT_URL="http://localhost:11434/v1"  # Ollama
+
+# API key — required for cloud providers (OpenAI, Anthropic). Omit for local models
+CONVIT_KEY="sk-..."
+
+# Model ID — which model to call. Omit to auto-detect from LM Studio
+CONVIT_MODEL="gpt-4o-mini"
+# CONVIT_MODEL="llama-3.2-3b-instruct"  # local
+
+# Cost per 1M input tokens (USD) — enables cost display in terminal
+# CONVIT_INPUT_COST="0.15"
+
+# Cost per 1M output tokens (USD) — enables cost display in terminal
+# CONVIT_OUTPUT_COST="0.60"
+
+# Request timeout in ms — how long to wait for LLM response before aborting
+# CONVIT_TIMEOUT="60000"
+```
 
 ---
 
 ## Example
 
 **Input:** Next.js app with `src/features/auth/`, `src/features/dashboard/`,
-`src/components/ui/`. Core is `src/`. Depth is 3 levels. Noise: `.next/`.
+`src/components/ui/`. Primary boundary: `src/`. Depth is 3 levels. Noise: `.next/`.
 
 **Output:**
 
