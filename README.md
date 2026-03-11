@@ -19,6 +19,7 @@ convit is different by design. Before a single token reaches the model, the code
 - [The First Commit](#the-first-commit)
 - [Installation](#installation)
 - [Setup](#setup)
+- [Convit Setup Skill (Cursor)](#convit-setup-skill-cursor)
 - [Commands](#commands)
 - [Configuration Reference](#configuration-reference)
 - [What This Is Really About](#what-this-is-really-about)
@@ -271,6 +272,40 @@ Works with OpenAI, Google Gemini, Anthropic, OpenRouter, AI Gateway, Groq, or an
 **Project config:** `npx @kareem-aez/convit init` runs a setup wizard and writes a `.convitrc.json` tuned to your project structure. Scope patterns, file exclusions, and format rules are all configurable.
 
 Config precedence: `--model` flag > env vars > `.convitrc` > built-in defaults.
+
+---
+
+## Convit Setup Skill (Cursor)
+
+The convit repo includes a Cursor Agent Skill that generates `.convitrc.json` from first principles. It scans your codebase, applies the Hierarchy Principle (Surgical Core, Functional Layers, Auxiliary Support), and proposes scope patterns, exclude paths, and rules. Total coverage: the config captures the entire repo, not just application code.
+
+**Location:** `.cursor/skills/convit-setup/` (in this repo)
+
+**How to use:**
+
+1. Copy the skill into your agent's skills path (see table below).
+2. Open your project in the agent and start a chat.
+3. Ask the AI to set up convit. Example prompts:
+   - "Set up convit for this project"
+   - "Configure .convitrc with scope patterns for my codebase"
+   - "Run convit setup"
+   - "Generate .convitrc.json from my project structure"
+
+The skill runs a Full-Scan Protocol (every top-level directory), Gitignore Intelligence (respects `.gitignore`, proposes exclude candidates for build output), and groups proposed patterns into Primary Boundary, Transversal Layers, and Auxiliary Support. You confirm or adjust each proposal before it writes the config.
+
+Optionally, the skill can run `ensure-convit-env.mjs` to append missing `CONVIT_*` vars to `.env` (placeholder values only, no secrets).
+
+**Using with any agent**
+
+Skills are agent-specific. Each agent system reads from its own skills directory. Copy the `convit-setup` folder into the correct path for your agent:
+
+| Agent | Skills path |
+|-------|-------------|
+| Cursor | `.cursor/skills/convit-setup/` (in project root) |
+| Codex | `$CODEX_HOME/skills/convit-setup/` |
+| Other (e.g. `.agents`) | `.agents/skills/convit-setup/` (at workspace root) |
+
+The skill triggers on: convit setup, .convitrc, commit scopes, convit init. Use Chat, Composer, or Agent mode. The agent loads the skill when your prompt matches those triggers and the skill is in the project's (or workspace's) skills path.
 
 ---
 
