@@ -4,6 +4,8 @@ Most AI commit tools are `git diff | ask GPT`. They produce `fix: update stuff` 
 
 convit is different by design. Before a single token reaches the model, the codebase runs a complete pre-analysis pass. It votes on the commit type. It scores every file by importance. It scans for secrets. It compresses the diff down to pure signal. The model receives context that is already half-analyzed. That is why the output is different.
 
+![convit demo](assets/demo-720@10.gif)
+
 ---
 
 ## Why
@@ -240,7 +242,7 @@ CONVIT_KEY=sk-...
 CONVIT_MODEL=gpt-4o
 ```
 
-Works with OpenAI, Google Gemini, Groq, or any OpenAI-compatible endpoint. For Gemini, the URL must end with `/openai`. Secrets stay in `.env`. Config files are safe to commit.
+Works with OpenAI, Google Gemini, Anthropic, OpenRouter, AI Gateway, Groq, or any OpenAI-compatible endpoint. Only three things change: the URL, the API key, and the model name. Same tool. Same prompts. For Gemini, the URL must end with `/openai`. Secrets stay in `.env`. Config files are safe to commit.
 
 **Ollama:** `CONVIT_URL=http://localhost:11434/v1`. `[SECURE]` mode. No API key required.
 
