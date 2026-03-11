@@ -2,9 +2,9 @@
 
 Most AI commit tools are `git diff | ask GPT`. They produce `fix: update stuff` and call it a day.
 
-convit is different by design. Before a single token reaches the model, the codebase runs a complete pre-analysis pass. It votes on the commit type. It scores every file by importance. It scans for secrets. It compresses the diff down to pure signal. The model receives context that is already half-analyzed. That is why the output is different.
-
 ![convit demo](https://raw.githubusercontent.com/Kareem-AEz/convit/master/assets/demo-720@10.gif)
+
+convit is different by design. Before a single token reaches the model, the codebase runs a complete pre-analysis pass. It votes on the commit type. It scores every file by importance. It scans for secrets. It compresses the diff down to pure signal. The model receives context that is already half-analyzed. That is why the output is different.
 
 ---
 
