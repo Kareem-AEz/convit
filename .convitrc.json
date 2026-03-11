@@ -1,10 +1,14 @@
 {
   "scopePatterns": [
-    { "pattern": "src/([^/]+)(/.*)?", "scope": "$1", "weight": 10 },
-    { "pattern": "bin/.*", "scope": "bin", "weight": 5 },
+    { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 10 },
     { "pattern": "assets/.*", "scope": "assets", "weight": 5 },
-    { "pattern": "\\.agents/.*", "scope": "agents", "weight": 3 },
-    { "pattern": "\\.cursor/.*", "scope": "cursor", "weight": 3 },
-    { "pattern": "^[^/]+$", "scope": "root", "weight": 4 }
+    { "pattern": "bin/.*", "scope": "bin", "weight": 3 },
+    { "pattern": ".cursor/.*", "scope": "cursor", "weight": 3 },
+    { "pattern": ".agents/.*", "scope": "agents", "weight": 3 },
+    { "pattern": "package(-lock)?.json", "scope": "deps", "weight": 7 },
+    { "pattern": "\\.gitignore|\\.cursorignore", "scope": "git", "weight": 7 },
+    { "pattern": "README.md|LICENSE", "scope": "docs", "weight": 7 },
+    { "pattern": "\\.env(\\.example)?", "scope": "env", "weight": 7 },
+    { "pattern": "\\.convitrc\\.json", "scope": "convit", "weight": 7 }
   ]
 }

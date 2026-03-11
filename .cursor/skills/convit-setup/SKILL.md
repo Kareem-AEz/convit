@@ -100,28 +100,38 @@ Apply these weights when architecting scope patterns. Higher weight wins ties.
 |--------|---------------|-----------------|
 | **10** | Deepest semantic boundary | `src/modules/([^/]+)/.*`, `packages/([^/]+)/.*`, `crates/([^/]+)/.*` |
 | **8** | Broad organizational folders | `src/([^/]+)/.*`, `lib/([^/]+)/.*` |
+| **7** | Universal Semantic Scopes | `package.json` → `deps`, `.gitignore` → `git`, `README.md` → `docs` |
 | **5** | Transversal layers | `ui/.*` → `ui`, `db/.*` → `db`, `prisma/.*` → `db` |
 | **5** | Documentation and Media | `assets/.*`, `docs/.*`, `images/.*` |
 | **3** | Tooling and Infrastructure | `.cursor/.*`, `.github/.*`, `scripts/.*`, `config/.*` → `config` |
 
-The primary boundary gets 10. Fallback patterns (catch-all under core) get 6–8.
-Cross-cutting concerns (UI, DB, API) and auxiliary docs/media get 5. Tooling,
+The primary boundary gets 10. Fallback patterns (catch-all under core) get 6–8. 
+Universal root files (package.json, gitignore, readme) get 7 to ensure they are 
+more specific than the root catch-all but subservient to deep domain logic. 
+Cross-cutting concerns (UI, DB, API) and auxiliary docs/media get 5. Tooling, 
 scripts, and config get 3.
 
-Transversal layers stay at 5 so the primary boundary (10) overrides when a file
-lives in both. Example: `src/features/auth/ui/button.tsx` should scope to `auth`,
+Transversal layers stay at 5 so the primary boundary (10) overrides when a file 
+lives in both. Example: `src/features/auth/ui/button.tsx` should scope to `auth`, 
 not `ui`. The domain wins.
 
 ---
 
 ## Phase 3 — Synthesis Logic
 
-Generate regex patterns using `([^/]+)` to dynamically capture directory names
-as scopes. The `scope` field is `"$1"` when the pattern captures a segment, or
+Generate regex patterns using `([^/]+)` to dynamically capture directory names 
+as scopes. The `scope` field is `"$1"` when the pattern captures a segment, or 
 a literal string (e.g. `"db"`, `"ui"`) when the layer is fixed.
 
-**User-specific patterns go at the top** of the `scopePatterns` array. They
-override built-in defaults. If the user has custom domains or conventions,
+**Universal Semantic Patterns** should be proposed for common root files:
+- `package.json` and lockfiles → `deps`
+- `.gitignore`, `.cursorignore`, `.dockerignore` → `git`
+- `README.md`, `LICENSE`, `CONTRIBUTING.md` → `docs`
+- `.env.example`, `.env.local` → `env`
+- `.convitrc.json` → `convit`
+
+**User-specific patterns go at the top** of the `scopePatterns` array. They 
+override built-in defaults. If the user has custom domains or conventions, 
 place those first.
 
 Always include a fallback pattern at the end unless the user opts out:
