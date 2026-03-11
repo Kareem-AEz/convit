@@ -22,13 +22,13 @@ The model should reason about your intent, not your lockfile.
 
 convit is local-first by default.
 
-Out of the box, it talks to `http://localhost:1234/v1`. No configuration. No API key. No account. Open LM Studio, load a model, run `npx convit`. Your diff never leaves the machine.
+Out of the box, it talks to `http://localhost:1234/v1`. No configuration. No API key. No account. Open LM Studio, load a model, run `npx @kareem-aez/convit`. Your diff never leaves the machine.
 
 When convit detects `localhost` or `127.0.0.1`, the `[SECURE]` badge appears in the terminal on every generation. The cost line reads `Free (local & private)`. That is not a fallback state. It is the intended default.
 
 ```bash
 # start LM Studio, load a model, then:
-npx convit
+npx @kareem-aez/convit
 ```
 
 This works identically with Ollama:
@@ -212,10 +212,10 @@ The local model won. Not because it is smarter. Because it had the right context
 
 ```bash
 # zero install, run once
-npx convit
+npx @kareem-aez/convit
 
 # project-local (recommended)
-npm install -D convit
+npm install -D @kareem-aez/convit
 ```
 
 Add to `package.json`:
@@ -232,7 +232,7 @@ Add to `package.json`:
 
 ## Setup
 
-**LM Studio (default):** Open LM Studio, load a model, run `npx convit`. Zero config. Auto-detects the loaded model from `/v1/models` with a 1-second timeout. Code never leaves the machine. `[SECURE]` mode is active automatically.
+**LM Studio (default):** Open LM Studio, load a model, run `npx @kareem-aez/convit`. Zero config. Auto-detects the loaded model from `/v1/models` with a 1-second timeout. Code never leaves the machine. `[SECURE]` mode is active automatically.
 
 **Cloud APIs:** Copy `.env.example` to `.env`:
 
@@ -246,7 +246,7 @@ Works with OpenAI, Google Gemini, Anthropic, OpenRouter, AI Gateway, Groq, or an
 
 **Ollama:** `CONVIT_URL=http://localhost:11434/v1`. `[SECURE]` mode. No API key required.
 
-**Project config:** `npx convit init` runs a setup wizard and writes a `.convitrc.json` tuned to your project structure. Scope patterns, file exclusions, and format rules are all configurable.
+**Project config:** `npx @kareem-aez/convit init` runs a setup wizard and writes a `.convitrc.json` tuned to your project structure. Scope patterns, file exclusions, and format rules are all configurable.
 
 Config precedence: `--model` flag > env vars > `.convitrc` > built-in defaults.
 
