@@ -10,6 +10,7 @@ convit is different by design. Before a single token reaches the model, the code
 
 ## Contents
 
+- [Quick Setup](#quick-setup)
 - [Why](#why)
 - [\[SECURE\] Mode](#secure-mode)
 - [The Weighted Voting Engine](#the-weighted-voting-engine)
@@ -24,6 +25,30 @@ convit is different by design. Before a single token reaches the model, the code
 - [Configuration Reference](#configuration-reference)
 - [What This Is Really About](#what-this-is-really-about)
 - [Contributing](#contributing)
+
+---
+
+## Quick Setup
+
+1. **Install** (project-local):
+   ```bash
+   npm install -D @kareem-aez/convit
+   ```
+
+2. **Add script** to `package.json`:
+   ```json
+   "scripts": { "commit": "convit" }
+   ```
+
+3. **Start a model** — LM Studio (default): open LM Studio, load a model. Or Ollama: `ollama run <model>`. Or set `.env` for cloud APIs (see [Setup](#setup)).
+
+4. **Run**:
+   ```bash
+   npm run commit
+   ```
+   Or: `npx @kareem-aez/convit`
+
+5. **Optional — config:** `npx @kareem-aez/convit init` (CLI wizard) or use the [Convit Setup Skill](#convit-setup-skill-cursor) in Cursor — ask "Set up convit for this project" to generate `.convitrc.json` from your codebase.
 
 ---
 
