@@ -6,3 +6,5 @@ dist/
 .DS_Store
 vhs.zip
 vhs_*/
+gemini.md
+.agents/skills/convit-release/

@@ -12,6 +12,12 @@ argument-hint: "[path to project root, or empty for current directory]"
 
 # convit Setup
 
+## 🚨 Security Mandate (CRITICAL)
+- **Direct Environment Access Forbidden:** Never use `read_file`, `grep_search`, or any other tool to read `.env`, `.env.local`, or any file containing secrets.
+- **Environment Verification:** To check for required `CONVIT_*` variables, you MUST ONLY use the `ensure-convit-env.mjs` script (located in the skill's `scripts/` folder). This script safely checks variable names without exposing values.
+- **Zero-Credential Policy:** Never log, print, or commit any credentials or API keys.
+
+## convit Setup Overview
 Generates a `.convitrc.json` tailored to the actual structure of the codebase.
 The config should capture Intent, not just file paths.
 
