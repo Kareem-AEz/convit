@@ -45,7 +45,12 @@ import type {
   SessionState,
   StagedContext,
 } from "../types";
-import { getLoadedModel, getRecentCommits, isInitialCommit } from "../utils/git";
+import {
+  getLoadedModel,
+  getRecentCommits,
+  isInitialCommit,
+  verifyGitRepo,
+} from "../utils/git";
 
 /**
  * Fetches and fully enriches all staged git changes into a ready-to-use context.
@@ -257,6 +262,14 @@ function printDebugOutput(
  *   After MAX_RETRY_ATTEMPTS, the "regenerate" option is removed from the prompt.
  */
 export async function runInteractiveLoop(config: Config): Promise<void> {
+  // -- ENVIRONMENT VALIDATION --
+  try {
+    verifyGitRepo();
+  } catch (err) {
+    cancel(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   // -- PROVIDER SETUP --
   // Provider is built after config is resolved so CLI flags take effect
   const provider = createOpenAICompatible({

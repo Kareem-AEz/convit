@@ -49,6 +49,36 @@ export async function getLoadedModel(config: Config): Promise<string> {
 }
 
 /**
+ * Checks if the current directory is a valid git repository.
+ *
+ * This handles the "dubious ownership" error on Windows by checking
+ * the exit code and stderr of `git rev-parse`.
+ *
+ * @throws Error with a descriptive message if not a repo or ownership is dubious.
+ */
+export function verifyGitRepo(): void {
+  try {
+    execSync("git rev-parse --is-inside-work-tree", {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+  } catch (err) {
+    const stderr = (err as any).stderr?.toString() || "";
+
+    if (stderr.includes("detected dubious ownership")) {
+      throw new Error(
+        "Git detected dubious ownership in this directory.\n" +
+          "To fix this, run:\n\n" +
+          `  git config --global --add safe.directory ${process.cwd().replace(/\\/g, "/")}\n`,
+      );
+    }
+
+    throw new Error(
+      "Not a git repository (or any of the parent directories): .git",
+    );
+  }
+}
+
+/**
  * Returns true when the repo has no commits yet (initial commit).
  *
  * Used to inject special prompt guidance so the model describes the project
