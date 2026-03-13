@@ -8,7 +8,7 @@ import type { Config, UserConfig } from "../types";
  * and user configuration files (e.g., .convitrc.js).
  *
  * Precedence (highest to lowest):
- *   CLI `--model <id>`  >  `.env` vars  >  `.convitrc`  >  Defaults
+ *   CLI `--model <id>`  >  `.env.local`  >  `.env`  >  `.convitrc`  >  Defaults
  */
 export function getConfig(): Config {
   const args = process.argv.slice(2);

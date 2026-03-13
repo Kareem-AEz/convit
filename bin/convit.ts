@@ -11,7 +11,8 @@ import { runInit } from "../src/cli/init";
 import { cancel } from "../src/cli/ui";
 import { getConfig } from "../src/config/loader";
 
-dotenv.config();
+dotenv.config({ path: ".env.local", quiet: true });
+dotenv.config({ path: ".env", quiet: true });
 
 const args = process.argv.slice(2);
 
