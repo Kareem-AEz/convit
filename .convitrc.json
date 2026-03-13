@@ -1,4 +1,7 @@
 {
+  "rules": {
+    "timeout": 120000
+  },
   "scopePatterns": [
     { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 10 },
     { "pattern": "assets/.*", "scope": "assets", "weight": 5 },
