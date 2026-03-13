@@ -244,9 +244,10 @@ export function detectPrimaryScope(
       const match = file.path.match(regex);
 
       if (match) {
-        const resolvedScope = scope.startsWith("$") && match[1]
-          ? scope.replace("$1", match[1])
-          : scope;
+        const resolvedScope =
+          scope.startsWith("$") && match[1]
+            ? scope.replace("$1", match[1])
+            : scope;
 
         scopeCandidates.set(
           resolvedScope,
@@ -274,7 +275,10 @@ export function detectPrimaryScope(
         scopeSources.set("docs", paths);
       }
       if (file.path.startsWith("scripts/")) {
-        scopeCandidates.set("scripts", (scopeCandidates.get("scripts") ?? 0) + 3);
+        scopeCandidates.set(
+          "scripts",
+          (scopeCandidates.get("scripts") ?? 0) + 3,
+        );
         const paths = scopeSources.get("scripts") ?? [];
         paths.push(file.path);
         scopeSources.set("scripts", paths);
@@ -326,12 +330,16 @@ export function detectSecondaryScopes(
       const match = file.path.match(regex);
 
       if (match) {
-        const resolvedScope = scope.startsWith("$") && match[1]
-          ? scope.replace("$1", match[1])
-          : scope;
+        const resolvedScope =
+          scope.startsWith("$") && match[1]
+            ? scope.replace("$1", match[1])
+            : scope;
 
         if (resolvedScope !== primaryScope) {
-          scopeCounts.set(resolvedScope, (scopeCounts.get(resolvedScope) ?? 0) + 1);
+          scopeCounts.set(
+            resolvedScope,
+            (scopeCounts.get(resolvedScope) ?? 0) + 1,
+          );
           const paths = scopeSources.get(resolvedScope) ?? [];
           paths.push(file.path);
           scopeSources.set(resolvedScope, paths);

@@ -19,7 +19,12 @@ import {
   getRetryTemperature,
 } from "../core/validator";
 import { estimateInputTokens } from "./tokenizer";
-import type { BuiltPrompt, Config, SessionState, StagedContext } from "../types";
+import type {
+  BuiltPrompt,
+  Config,
+  SessionState,
+  StagedContext,
+} from "../types";
 import { COMMIT_TYPES } from "../types";
 
 /**
@@ -157,12 +162,14 @@ Use this as the primary context and ensure your commit message reflects these po
 ${DIVIDER}
 PRE-ANALYSIS HINTS:
 ${DIVIDER}
-${initialCommit
-  ? "Initial commit — describe the project as a whole. Ignore file-level type/scope hints."
-  : `Based on file analysis, this appears to be a '${classification.type}' commit.
+${
+  initialCommit
+    ? "Initial commit — describe the project as a whole. Ignore file-level type/scope hints."
+    : `Based on file analysis, this appears to be a '${classification.type}' commit.
 Suggested scope: ${classification.scope}
 ${classification.secondaryScopes.length > 0 ? `Also affects: ${classification.secondaryScopes.join(", ")}\n` : ""}
-Use these hints to guide your commit message, but adjust if the actual changes suggest otherwise.`}
+Use these hints to guide your commit message, but adjust if the actual changes suggest otherwise.`
+}
 
 ${DIVIDER}
 STAGED FILES:

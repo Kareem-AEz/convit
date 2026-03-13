@@ -206,12 +206,7 @@ export async function generateCommit(
     const elapsedSeconds = (Date.now() - startTime) / 1000;
     if (rawMessage.trim().length === 0) {
       throw new Error(
-        formatApiError(
-          err,
-          modelName,
-          config.timeoutMs / 1000,
-          elapsedSeconds,
-        ),
+        formatApiError(err, modelName, config.timeoutMs / 1000, elapsedSeconds),
       );
     }
     console.log(pc.yellow("\nStream interrupted, but content received."));

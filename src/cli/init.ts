@@ -49,6 +49,8 @@ export async function runInit(): Promise<void> {
 
   outro(
     pc.green(`Created ${CONFIG_FILENAME}`) +
-      pc.dim("\n  Edit it to add rules or scope patterns. Use .env for API keys."),
+      pc.dim(
+        "\n  Edit it to add rules or scope patterns. Use .env for API keys.",
+      ),
   );
 }

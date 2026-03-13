@@ -9,7 +9,13 @@
 import { getEncoding } from "js-tiktoken";
 import type { Tiktoken } from "js-tiktoken";
 
-type EncodingName = "gpt2" | "r50k_base" | "p50k_base" | "p50k_edit" | "cl100k_base" | "o200k_base";
+type EncodingName =
+  | "gpt2"
+  | "r50k_base"
+  | "p50k_base"
+  | "p50k_edit"
+  | "cl100k_base"
+  | "o200k_base";
 
 let cachedEncoder: Tiktoken | null = null;
 let cachedEncoding: EncodingName | null = null;
@@ -93,5 +99,9 @@ export function estimateInputTokens(
   }
 
   const totalChars = systemMessage.length + userMessage.length;
-  return Math.ceil(totalChars / 4) + CHAT_OVERHEAD_PER_MESSAGE * 2 + CHAT_OVERHEAD_ASSISTANT_PRIMING;
+  return (
+    Math.ceil(totalChars / 4) +
+    CHAT_OVERHEAD_PER_MESSAGE * 2 +
+    CHAT_OVERHEAD_ASSISTANT_PRIMING
+  );
 }

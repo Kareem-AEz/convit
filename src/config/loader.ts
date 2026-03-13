@@ -29,26 +29,18 @@ export function getConfig(): Config {
 
   // 2. Merge Configuration
   // All provider settings come from env only — config files are safe to commit.
-  const apiUrl =
-    process.env.CONVIT_URL ?? "http://localhost:1234/v1";
+  const apiUrl = process.env.CONVIT_URL ?? "http://localhost:1234/v1";
 
-  const apiKey =
-    process.env.CONVIT_KEY ?? "lm-studio";
+  const apiKey = process.env.CONVIT_KEY ?? "lm-studio";
 
-  const model =
-    cliModelOverride ??
-    process.env.CONVIT_MODEL;
+  const model = cliModelOverride ?? process.env.CONVIT_MODEL;
 
   const config: Config = {
     apiUrl,
     apiKey,
     model: model as string, // Cast because it might be undefined (auto-detect)
-    inputCostPer1M: parseFloat(
-      process.env.CONVIT_INPUT_COST ?? "0"
-    ),
-    outputCostPer1M: parseFloat(
-      process.env.CONVIT_OUTPUT_COST ?? "0"
-    ),
+    inputCostPer1M: parseFloat(process.env.CONVIT_INPUT_COST ?? "0"),
+    outputCostPer1M: parseFloat(process.env.CONVIT_OUTPUT_COST ?? "0"),
     dryRun,
     noCompress,
     accept,
@@ -58,10 +50,7 @@ export function getConfig(): Config {
       userConfig.rules?.timeout ||
       DEFAULT_TIMEOUT_MS,
     userConfig, // Pass the merged config down to the domain layers
-    exclude: [
-      ...EXCLUDED_FILES,
-      ...(userConfig.exclude ?? []),
-    ],
+    exclude: [...EXCLUDED_FILES, ...(userConfig.exclude ?? [])],
   };
 
   if (debug) {
@@ -70,7 +59,9 @@ export function getConfig(): Config {
     const padLeft = Math.floor((60 - title.length) / 2);
     const padRight = 60 - title.length - padLeft;
     console.log(pc.yellow(rule));
-    console.log(pc.yellow(pc.bold(" ".repeat(padLeft) + title + " ".repeat(padRight))));
+    console.log(
+      pc.yellow(pc.bold(" ".repeat(padLeft) + title + " ".repeat(padRight))),
+    );
     console.log(pc.yellow(rule));
     console.log();
   }
@@ -90,19 +81,21 @@ export function getConfig(): Config {
     console.log(pc.dim("Config"));
     if (searchResult) {
       console.log(
-        pc.dim(`  File:  ${searchResult.filepath.split(/[\\/]/).pop()}`)
+        pc.dim(`  File:  ${searchResult.filepath.split(/[\\/]/).pop()}`),
       );
     }
     console.log(pc.dim(`  URL:   ${config.apiUrl}`));
     console.log(pc.dim(`  Model: ${config.model ?? "(auto-detect)"}`));
     if (config.apiKey !== "lm-studio") {
       console.log(
-        pc.dim(`  Key:   ${"*".repeat(6) + config.apiKey.slice(-4)}`)
+        pc.dim(`  Key:   ${"*".repeat(6) + config.apiKey.slice(-4)}`),
       );
     }
     if (config.inputCostPer1M > 0 || config.outputCostPer1M > 0) {
       console.log(
-        pc.dim(`  Costs: $${config.inputCostPer1M}/1M in, $${config.outputCostPer1M}/1M out`)
+        pc.dim(
+          `  Costs: $${config.inputCostPer1M}/1M in, $${config.outputCostPer1M}/1M out`,
+        ),
       );
     }
     console.log();
@@ -114,10 +107,12 @@ export function getConfig(): Config {
     if (!config.model) missing.push("Model ID");
     if (missing.length > 0) {
       console.log(
-        pc.yellow(`External API detected but missing: ${missing.join(", ")}`)
+        pc.yellow(`External API detected but missing: ${missing.join(", ")}`),
       );
       console.log(
-        pc.dim("  External providers require CONVIT_KEY and CONVIT_MODEL in .env.\n")
+        pc.dim(
+          "  External providers require CONVIT_KEY and CONVIT_MODEL in .env.\n",
+        ),
       );
     }
   }
@@ -125,7 +120,7 @@ export function getConfig(): Config {
   if (config.apiKey !== "lm-studio" && config.apiUrl.includes("localhost")) {
     console.log(pc.yellow("API Key is set but using default localhost URL."));
     console.log(
-      pc.dim("  If using an external provider, configure the base URL.\n")
+      pc.dim("  If using an external provider, configure the base URL.\n"),
     );
   }
 

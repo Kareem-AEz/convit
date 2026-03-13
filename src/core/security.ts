@@ -96,7 +96,9 @@ export async function promptForSensitiveConfirmation(
   }
   lines.push("");
   lines.push(`This diff will be sent to: ${apiUrl}`);
-  lines.push("If this contains real secrets, they will be exposed to the API provider.");
+  lines.push(
+    "If this contains real secrets, they will be exposed to the API provider.",
+  );
 
   note(lines.join("\n"), "SECURITY: Potential sensitive data detected");
 

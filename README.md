@@ -31,11 +31,13 @@ convit is different by design. Before a single token reaches the model, the code
 ## Quick Setup
 
 1. **Install** (project-local):
+
    ```bash
    npm install -D @kareem-aez/convit
    ```
 
 2. **Add script** to `package.json`:
+
    ```json
    "scripts": { "commit": "convit" }
    ```
@@ -43,9 +45,11 @@ convit is different by design. Before a single token reaches the model, the code
 3. **Start a model** — LM Studio (default): open LM Studio, load a model. Or Ollama: `ollama run <model>`. Or set `.env` for cloud APIs (see [Setup](#setup)).
 
 4. **Run**:
+
    ```bash
    npm run commit
    ```
+
    Or: `npx @kareem-aez/convit`
 
 5. **Optional — config:** `npx @kareem-aez/convit init` (CLI wizard) or use the [Convit Setup Skill](#convit-setup-skill-cursor) in Cursor — ask "Set up convit for this project" to generate `.convitrc.json` from your codebase.
@@ -85,16 +89,16 @@ Before any generation runs, the raw diff is scanned against eight sensitive data
 
 **Sensitive data patterns:**
 
-| Pattern | What it catches |
-|---|---|
-| `ghp_[A-Za-z0-9]{36}` | GitHub personal access tokens |
-| `sk-[A-Za-z0-9]{48}` | OpenAI API keys |
-| `AKIA[0-9A-Z]{16}` | AWS access keys |
-| `-----BEGIN ... PRIVATE KEY-----` | RSA / OPENSSH private keys |
-| `api_key = "..."` (20+ chars) | Generic API key assignments |
-| `password = "..."` (8+ chars) | Password assignments |
-| `secret = "..."` (20+ chars) | Secret assignments |
-| `token = "..."` (20+ chars) | Token assignments |
+| Pattern                           | What it catches               |
+| --------------------------------- | ----------------------------- |
+| `ghp_[A-Za-z0-9]{36}`             | GitHub personal access tokens |
+| `sk-[A-Za-z0-9]{48}`              | OpenAI API keys               |
+| `AKIA[0-9A-Z]{16}`                | AWS access keys               |
+| `-----BEGIN ... PRIVATE KEY-----` | RSA / OPENSSH private keys    |
+| `api_key = "..."` (20+ chars)     | Generic API key assignments   |
+| `password = "..."` (8+ chars)     | Password assignments          |
+| `secret = "..."` (20+ chars)      | Secret assignments            |
+| `token = "..."` (20+ chars)       | Token assignments             |
 
 Matched values are masked to `first4****last4` in the display. The confirmation prompt defaults to cancel. Secrets do not leave silently.
 
@@ -110,16 +114,16 @@ Every file independently casts votes based on what it is and what happened to it
 
 **Type votes:**
 
-| Signal | Vote |
-|---|---|
-| Test file touched | +5 `test` |
-| Docs file touched | +5 `docs` |
-| Config file touched | +4 `chore` |
-| File renamed | +3 `refactor` |
-| Diff contains `useMemo` / `cache` / `optimize` | +3 `perf` |
-| New source file added | +2 `feat` |
-| Existing source file modified | +2 `fix` |
-| Diff contains `catch` / `error` / `try` | +2 `fix` |
+| Signal                                         | Vote          |
+| ---------------------------------------------- | ------------- |
+| Test file touched                              | +5 `test`     |
+| Docs file touched                              | +5 `docs`     |
+| Config file touched                            | +4 `chore`    |
+| File renamed                                   | +3 `refactor` |
+| Diff contains `useMemo` / `cache` / `optimize` | +3 `perf`     |
+| New source file added                          | +2 `feat`     |
+| Existing source file modified                  | +2 `fix`      |
+| Diff contains `catch` / `error` / `try`        | +2 `fix`      |
 
 This is additive, not a decision tree. Touch three test files and two source files: test accumulates 15 points to fix's 4. Test wins. Modify a source file that also introduces error handling: fix gets 4 combined points. It is right. Multiple weak signals compound into a confident classification.
 
@@ -131,11 +135,11 @@ Scope candidates compete by accumulated weight across all staged files. Highest 
 
 **Built-in defaults:**
 
-| Pattern | Scope | Weight |
-|---|---|---|
-| `packages/([^/]+)/.*` | package name | 10 |
-| `src/([^/]+)/.*` | directory name | 8 |
-| `components/.*` | ui | 5 |
+| Pattern               | Scope          | Weight |
+| --------------------- | -------------- | ------ |
+| `packages/([^/]+)/.*` | package name   | 10     |
+| `src/([^/]+)/.*`      | directory name | 8      |
+| `components/.*`       | ui             | 5      |
 
 User patterns in `.convitrc` run before the defaults. Configure `src/features/([^/]+)/.*` at weight 10 and feature-sliced scopes beat generic directory names. Touch five files across three layers and the deepest, most specific scope takes the commit. No tiebreaker ambiguity.
 
@@ -324,10 +328,10 @@ Optionally, the skill can run `ensure-convit-env.mjs` to append missing `CONVIT_
 
 Skills are agent-specific. Each agent system reads from its own skills directory. Copy the `convit-setup` folder into the correct path for your agent:
 
-| Agent | Skills path |
-|-------|-------------|
-| Cursor | `.cursor/skills/convit-setup/` (in project root) |
-| Codex | `$CODEX_HOME/skills/convit-setup/` |
+| Agent                  | Skills path                                        |
+| ---------------------- | -------------------------------------------------- |
+| Cursor                 | `.cursor/skills/convit-setup/` (in project root)   |
+| Codex                  | `$CODEX_HOME/skills/convit-setup/`                 |
 | Other (e.g. `.agents`) | `.agents/skills/convit-setup/` (at workspace root) |
 
 The skill triggers on: convit setup, .convitrc, commit scopes, convit init. Use Chat, Composer, or Agent mode. The agent loads the skill when your prompt matches those triggers and the skill is in the project's (or workspace's) skills path.
@@ -365,12 +369,10 @@ Secrets go in `.env` only: `CONVIT_URL`, `CONVIT_KEY`, `CONVIT_MODEL`. Optional:
   },
   "scopePatterns": [
     { "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 },
-    { "pattern": "packages/([^/]+)/.*",     "scope": "$1", "weight": 10 },
-    { "pattern": "src/([^/]+)/.*",          "scope": "$1", "weight": 8  }
+    { "pattern": "packages/([^/]+)/.*", "scope": "$1", "weight": 10 },
+    { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 8 }
   ],
-  "exclude": [
-    "src/generated/prisma"
-  ]
+  "exclude": ["src/generated/prisma"]
 }
 ```
 

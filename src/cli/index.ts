@@ -186,7 +186,9 @@ function printDebugOutput(
   console.log(dim("  files:"));
   for (const f of diffSummary.files) {
     console.log(
-      dim(`    • ${f.path.padEnd(36)} ${f.category.padEnd(10)} +${f.additions} -${f.deletions}`),
+      dim(
+        `    • ${f.path.padEnd(36)} ${f.category.padEnd(10)} +${f.additions} -${f.deletions}`,
+      ),
     );
   }
   console.log();
@@ -223,7 +225,11 @@ function printDebugOutput(
       console.log(dim("  " + line));
     }
     if (context.processedDiff.split("\n").length > 20) {
-      console.log(dim(`  ... (${context.processedDiff.split("\n").length - 20} more lines)`));
+      console.log(
+        dim(
+          `  ... (${context.processedDiff.split("\n").length - 20} more lines)`,
+        ),
+      );
     }
   }
   console.log();
@@ -242,7 +248,9 @@ function printDebugOutput(
   const urlNote = isLocalMode(config) ? dim(" (secure/offline)") : "";
   console.log(dim(`  URL: ${config.apiUrl}`) + urlNote);
   console.log(dim(`  Model: ${config.model ?? "(auto-detect)"}`));
-  console.log(dim(`  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}`));
+  console.log(
+    dim(`  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}`),
+  );
   console.log(dim(`  estimatedInputTokens: ~${prompt.estimatedInputTokens}`));
   console.log();
 
@@ -322,7 +330,9 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   // -- SENSITIVE DATA GATE --
   if (context.sensitiveMatches.length > 0) {
     if (config.accept) {
-      cancel("Cancelled — sensitive data detected. Remove --accept to confirm.");
+      cancel(
+        "Cancelled — sensitive data detected. Remove --accept to confirm.",
+      );
       return;
     }
     const confirmed = await promptForSensitiveConfirmation(
@@ -409,9 +419,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         ? ` (${state.attemptCount + 1}/${MAX_RETRY_ATTEMPTS})`
         : "";
     const secureBadge = isLocalMode(config) ? pc.bold(" [SECURE]") : "";
-    console.log(
-      pc.dim(`\n${modeLabel}`) + secureBadge + pc.dim(attemptSuffix),
-    );
+    console.log(pc.dim(`\n${modeLabel}`) + secureBadge + pc.dim(attemptSuffix));
     const metaParts = [
       `Prompt ~${formatTokenCount(prompt.estimatedInputTokens)} tokens`,
       modelName,

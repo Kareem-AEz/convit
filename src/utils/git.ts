@@ -112,10 +112,9 @@ export function isInitialCommit(): boolean {
  */
 export function getRecentCommits(n: number = 3): string {
   try {
-    const out = execSync(
-      `git log -${n} --format="%B%n---"`,
-      { encoding: "utf-8" },
-    ).trim();
+    const out = execSync(`git log -${n} --format="%B%n---"`, {
+      encoding: "utf-8",
+    }).trim();
     return out.endsWith("---") ? out.slice(0, -3).trim() : out;
   } catch {
     return "";
