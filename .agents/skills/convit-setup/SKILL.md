@@ -244,7 +244,7 @@ setup script, or remind the user to add these to `.env` or `.env.local`:
 Only run the script after the user has seen this disclosure and has not objected.
 
 ```bash
-node .cursor/skills/convit-setup/scripts/ensure-convit-env.mjs [path-to-project-root]
+node .agents/skills/convit-setup/scripts/ensure-convit-env.mjs [path-to-project-root]
 ```
 
 From project root, omit the path. The script checks `.env.local` first, then
@@ -290,7 +290,7 @@ CONVIT_MODEL="gpt-4o-mini"
 {
   "scopePatterns": [
     { "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 },
-    { "pattern": "components/ui/.*", "scope": "ui", "weight": 5 },
+    { "pattern": "src/components/ui/.*", "scope": "ui", "weight": 5 },
     { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 6 }
   ],
   "exclude": [".next/"]
