@@ -1,4 +1,4 @@
-import { test, expect } from "vitest";
+import { test, expect, vi } from "vitest";
 
 import {
   classifyChanges,
@@ -109,4 +109,42 @@ test("detectSecondaryScopes: requires ≥2 files and excludes the primary", () =
   ];
   const { scopes } = detectSecondaryScopes(files, "api", makeConfig());
   expect(scopes).toEqual(["ui"]); // ui has 2 files; api is primary, excluded
+});
+
+test("detectPrimaryScope: an invalid user scopePattern warns and the run continues", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const cfg = makeConfig({
+    userConfig: {
+      scopePatterns: [{ pattern: "src/(", scope: "broken", weight: 5 }],
+    },
+  });
+
+  // A malformed regex must not throw — it is skipped, so the default pattern
+  // still resolves the scope ("src/cli/.*" → "cli").
+  const { scope } = detectPrimaryScope(
+    [makeFile({ path: "src/cli/index.ts", category: "source" })],
+    cfg,
+  );
+
+  expect(warn).toHaveBeenCalled();
+  expect(scope).toBe("cli");
+  warn.mockRestore();
+});
+
+test("classifyChanges: a single invalid pattern warns only once across both detectors", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const cfg = makeConfig({
+    userConfig: {
+      scopePatterns: [{ pattern: "src/(", scope: "broken", weight: 5 }],
+    },
+  });
+
+  classifyChanges(
+    [makeFile({ path: "src/cli/index.ts", category: "source" })],
+    "",
+    cfg,
+  );
+
+  expect(warn).toHaveBeenCalledTimes(1);
+  warn.mockRestore();
 });

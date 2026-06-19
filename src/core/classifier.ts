@@ -224,23 +224,53 @@ export function detectCommitType(
  *
  * Default: "core"
  */
-export function detectPrimaryScope(
-  files: FileSummary[],
-  config: Config,
-): { scope: string; scopeSources: Map<string, string[]> } {
-  const scopeCandidates = new Map<string, number>();
-  const scopeSources = new Map<string, string[]>();
+/** A scope pattern with its anchored regex precompiled. */
+interface CompiledScopePattern {
+  regex: RegExp;
+  scope: string;
+  weight: number;
+}
 
+/**
+ * Compiles user + default scope patterns once, anchored at the start of the
+ * path. User patterns come from `.convitrc.json`, so a single typo (e.g. `src/(`)
+ * must not crash the CLI: invalid regexes are warned about and skipped.
+ */
+export function compileScopePatterns(config: Config): CompiledScopePattern[] {
   const patterns = [
     ...(config.userConfig.scopePatterns ?? []),
     ...DEFAULT_SCOPE_PATTERNS,
   ];
 
+  const compiled: CompiledScopePattern[] = [];
+  for (const { pattern, scope, weight } of patterns) {
+    try {
+      compiled.push({ regex: new RegExp(`^${pattern}`), scope, weight });
+    } catch (err) {
+      console.warn(
+        `convit: skipping invalid scopePattern ${JSON.stringify(pattern)} — ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  return compiled;
+}
+
+export function detectPrimaryScope(
+  files: FileSummary[],
+  config: Config,
+  compiledPatterns?: CompiledScopePattern[],
+): { scope: string; scopeSources: Map<string, string[]> } {
+  const scopeCandidates = new Map<string, number>();
+  const scopeSources = new Map<string, string[]>();
+
+  const patterns = compiledPatterns ?? compileScopePatterns(config);
+
   for (const file of files) {
     let matchedPattern = false;
 
-    for (const { pattern, scope, weight } of patterns) {
-      const regex = new RegExp(`^${pattern}`);
+    for (const { regex, scope, weight } of patterns) {
       const match = file.path.match(regex);
 
       if (match) {
@@ -315,18 +345,15 @@ export function detectSecondaryScopes(
   files: FileSummary[],
   primaryScope: string,
   config: Config,
+  compiledPatterns?: CompiledScopePattern[],
 ): { scopes: string[]; scopeSources: Map<string, string[]> } {
   const scopeCounts = new Map<string, number>();
   const scopeSources = new Map<string, string[]>();
 
-  const patterns = [
-    ...(config.userConfig.scopePatterns ?? []),
-    ...DEFAULT_SCOPE_PATTERNS,
-  ];
+  const patterns = compiledPatterns ?? compileScopePatterns(config);
 
   for (const file of files) {
-    for (const { pattern, scope } of patterns) {
-      const regex = new RegExp(`^${pattern}`);
+    for (const { regex, scope } of patterns) {
       const match = file.path.match(regex);
 
       if (match) {
@@ -443,9 +470,15 @@ export function classifyChanges(
   config: Config,
 ): ChangeClassification {
   const { type, scores, breakdowns } = detectCommitType(files, diff);
-  const { scope, scopeSources } = detectPrimaryScope(files, config);
+  // Compile once so an invalid user pattern warns a single time, not per detector.
+  const compiledPatterns = compileScopePatterns(config);
+  const { scope, scopeSources } = detectPrimaryScope(
+    files,
+    config,
+    compiledPatterns,
+  );
   const { scopes: secondaryScopes, scopeSources: secondaryScopeSources } =
-    detectSecondaryScopes(files, scope, config);
+    detectSecondaryScopes(files, scope, config, compiledPatterns);
 
   const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
   const topScore = scores[type];
