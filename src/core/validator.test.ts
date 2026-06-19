@@ -49,6 +49,18 @@ test("validateCommitMessage flags a literal copied example", () => {
   expect(flagged).toBe(true);
 });
 
+test("validateCommitMessage: a copied example warns but does not block (isValid)", () => {
+  // Phase-1 quick win: the copied-example check is advisory now, so a message
+  // that trips it is still valid (the warning just nudges the user to verify).
+  const result = validateCommitMessage(
+    "feat(auth): implement password reset functionality",
+    makeConfig(),
+  );
+  expect(result.isValid).toBe(true);
+  expect(result.warnings.some((w) => /copied|example/i.test(w))).toBe(true);
+  expect(result.errors.some((e) => /copied|example/i.test(e))).toBe(false);
+});
+
 test("validateCommitMessage treats an empty message as invalid", () => {
   const result = validateCommitMessage("   \n  ", makeConfig());
   expect(result.isValid).toBe(false);
@@ -89,8 +101,16 @@ test("generateCorrectionHints flags missing bullets against minBullets", () => {
 // `fix: x` is wrongly rejected.
 test.todo("P2-T1: accepts spec-valid scopeless messages like `fix: x`");
 
-// Phase 1 quick win: "update project dependencies" is a real, common chore
-// subject but is currently treated as a copied example and marked invalid.
-test.todo(
-  "Phase 1 quick win: does not reject a genuine dependency-bump subject",
-);
+// Phase 1 quick win (DONE): "update project dependencies" is a real, common
+// chore subject — it must no longer be treated as a copied example.
+test("Phase 1 quick win: does not reject a genuine dependency-bump subject", () => {
+  const result = validateCommitMessage(
+    "chore(deps): update project dependencies\n\n- bump vitest to latest",
+    makeConfig(),
+  );
+  expect(result.isValid).toBe(true);
+  const flagged = [...result.errors, ...result.warnings].some((m) =>
+    /copied|example/i.test(m),
+  );
+  expect(flagged).toBe(false);
+});

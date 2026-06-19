@@ -4,6 +4,16 @@ import { pc } from "../cli/ui";
 import type { Config, UserConfig } from "../types";
 
 /**
+ * Parses a per-1M cost env value, falling back to 0 for missing or malformed
+ * input. `parseFloat` returns NaN for non-numeric strings, which would render
+ * as "$NaN" in the cost readout — guard against it here.
+ */
+export function parseCost(raw: string | undefined): number {
+  const n = parseFloat(raw ?? "0");
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
  * Parses runtime configuration from environment variables, CLI arguments,
  * and user configuration files (e.g., .convitrc.js).
  *
@@ -39,8 +49,8 @@ export function getConfig(): Config {
     apiUrl,
     apiKey,
     model: model as string, // Cast because it might be undefined (auto-detect)
-    inputCostPer1M: parseFloat(process.env.CONVIT_INPUT_COST ?? "0"),
-    outputCostPer1M: parseFloat(process.env.CONVIT_OUTPUT_COST ?? "0"),
+    inputCostPer1M: parseCost(process.env.CONVIT_INPUT_COST),
+    outputCostPer1M: parseCost(process.env.CONVIT_OUTPUT_COST),
     dryRun,
     noCompress,
     accept,

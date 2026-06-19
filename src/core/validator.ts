@@ -124,7 +124,6 @@ export function generateCorrectionHints(
   const examplePhrases = [
     "password reset functionality",
     "race condition in user cache",
-    "update project dependencies",
   ];
   for (const phrase of examplePhrases) {
     if (message.toLowerCase().includes(phrase.toLowerCase())) {
@@ -215,7 +214,6 @@ export function validateCommitMessage(
   const examplePhrases = [
     "password reset functionality",
     "race condition in user cache",
-    "update project dependencies",
     "Implement password reset API",
     "Add mutex lock to cache",
   ];
@@ -225,12 +223,12 @@ export function validateCommitMessage(
     messageText.includes(phrase.toLowerCase()),
   );
 
+  // Advisory, not a hard error: a real subject can legitimately echo a phrase
+  // (e.g. a genuine dependency bump). Flag it so the user can verify, but don't
+  // block --accept on it.
   if (copiedExamples.length > 0) {
-    errors.push(
-      "⚠️  AI appears to have copied example text instead of analyzing your changes!",
-    );
-    errors.push(
-      "   Try regenerating (r) or check if your model understands instructions",
+    warnings.push(
+      "Possible copied example text — verify the message describes your actual changes, not the prompt's examples.",
     );
   }
 
