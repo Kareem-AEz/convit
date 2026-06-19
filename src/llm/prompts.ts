@@ -70,10 +70,10 @@ export function buildPrompt(
   const maxBullet = rules.maxBulletLength ?? MAX_BULLET_LENGTH;
   const minBullets = rules.minBullets ?? MIN_BULLETS;
 
-  const diffPreview =
-    processedDiff.length > MAX_DIFF_LENGTH
-      ? processedDiff.slice(0, MAX_DIFF_LENGTH)
-      : processedDiff;
+  const diffTruncated = processedDiff.length > MAX_DIFF_LENGTH;
+  const diffPreview = diffTruncated
+    ? processedDiff.slice(0, MAX_DIFF_LENGTH) + "\n[... diff truncated ...]"
+    : processedDiff;
 
   const DIVIDER = "═".repeat(64);
 
@@ -201,5 +201,6 @@ Remember: Write about these ACTUAL changes, not the examples above. Keep bullets
     user: userMessage,
     temperature,
     estimatedInputTokens,
+    diffTruncated,
   };
 }

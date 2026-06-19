@@ -166,6 +166,7 @@ export async function generateCommit(
   let inputTokens = prompt.estimatedInputTokens;
   let outputTokens = 0;
   let tokensFromApi = false;
+  let wasTruncated = false;
 
   const result = streamText({
     model,
@@ -209,6 +210,7 @@ export async function generateCommit(
         formatApiError(err, modelName, config.timeoutMs / 1000, elapsedSeconds),
       );
     }
+    wasTruncated = true;
     console.log(pc.yellow("\nStream interrupted, but content received."));
   }
 
@@ -239,5 +241,6 @@ export async function generateCommit(
     outputTokens,
     durationMs,
     tokensFromApi,
+    wasTruncated,
   };
 }

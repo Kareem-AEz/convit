@@ -186,6 +186,8 @@ export interface GenerateResult {
   outputTokens: number;
   durationMs: number;
   tokensFromApi: boolean;
+  /** True when the stream was interrupted mid-output and content was salvaged. */
+  wasTruncated: boolean;
 }
 
 /** A fully assembled prompt ready for the AI */
@@ -194,4 +196,6 @@ export interface BuiltPrompt {
   user: string;
   temperature: number;
   estimatedInputTokens: number;
+  /** True when the diff was sliced to MAX_DIFF_LENGTH before going into the prompt. */
+  diffTruncated: boolean;
 }

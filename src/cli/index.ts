@@ -30,6 +30,7 @@ import {
   text,
 } from "../cli/ui";
 import { MAX_FILES_FULL_QUALITY, MAX_RETRY_ATTEMPTS } from "../config/defaults";
+import { evaluateAutoAcceptGate, evaluateSensitiveAcceptGate } from "./gates";
 import { classifyChanges } from "../core/classifier";
 import { analyzeDiff, summarizeDiff } from "../core/parser";
 import {
@@ -211,6 +212,7 @@ function printDebugOutput(
       `  wasCompressed: ${context.wasCompressed}  ${context.originalLength} → ${context.compressedLength} chars`,
     ),
   );
+  console.log(dim(`  diffTruncatedForPrompt: ${prompt.diffTruncated}`));
   console.log();
 
   console.log(section("DATA AFTER COMPRESSION"));
@@ -329,11 +331,13 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
 
   // -- SENSITIVE DATA GATE --
   if (context.sensitiveMatches.length > 0) {
-    if (config.accept) {
-      cancel(
-        "Cancelled — sensitive data detected. Remove --accept to confirm.",
-      );
-      return;
+    const gate = evaluateSensitiveAcceptGate(
+      config.accept,
+      context.sensitiveMatches,
+    );
+    if (!gate.ok) {
+      cancel(gate.reason);
+      process.exit(gate.code);
     }
     const confirmed = await promptForSensitiveConfirmation(
       context.sensitiveMatches,
@@ -436,6 +440,12 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
       result = await generateCommit(model, prompt, modelName, config);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      // --accept must fail closed: never prompt (no TTY in CI) and never exit 0
+      // on a generation failure. Same contract as the validation/secret gates.
+      if (config.accept) {
+        cancel(`Generation failed — ${errMsg}`);
+        process.exit(1);
+      }
       note(errMsg, "Generation failed");
       const retryChoice = await confirm({
         message: "Retry?",
@@ -479,6 +489,13 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
           : cost.formattedCost + costLabel;
     console.log(pc.dim("  Cost    ") + costDisplay);
 
+    if (result.wasTruncated) {
+      console.log(
+        pc.yellow(
+          "\nIncomplete output — the model stream was interrupted; review the message carefully before committing.",
+        ),
+      );
+    }
     if (result.validation.warnings.length > 0) {
       console.log(pc.yellow("\nWarnings"));
       result.validation.warnings.forEach((w) => console.log("  • " + w));
@@ -494,6 +511,11 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
 
     // -- AUTO-ACCEPT (--accept flag for CI / automation) --
     if (config.accept) {
+      const gate = evaluateAutoAcceptGate(result);
+      if (!gate.ok) {
+        cancel(gate.reason);
+        process.exit(gate.code);
+      }
       await commitOrDryRun(result.message, config);
       return;
     }
