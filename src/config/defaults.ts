@@ -98,28 +98,25 @@ export const GENERATED_PATTERNS = [
  *
  * Design choices:
  * - Conservative matching (low false positives). A key must look like an
- *   assignment (`key = "value"`) with a minimum length to filter noise.
+ *   assignment (`key = value`) with a minimum length to filter noise.
  * - Known token formats (GitHub PAT `ghp_`, OpenAI `sk-`, AWS `AKIA`) use
  *   exact prefix+length patterns — these are canonical and nearly zero false-positive.
  * - The generic "api_key/secret/token" patterns require ≥20 char values to
  *   avoid matching innocuous config values like `token: "local"`.
+ * - Value-quoting is **optional**: bare `KEY=value` assignments (no surrounding
+ *   quotes) in `.env` / YAML / shell diffs are caught, not just quoted source
+ *   literals. `.env` is not in EXCLUDED_FILES, so it reaches the scanner.
+ *
+ * Ordering matters: specific token formats are listed **before** the generic
+ * key=value patterns. The detect loop reports matches in array order, so when a
+ * line matches both (e.g. `GITHUB_TOKEN=ghp_...` hits both `github_pat` and the
+ * generic `secret`), the precise label wins `matches[0]`.
  */
 export const SENSITIVE_PATTERNS: Array<{
   pattern: RegExp;
   label: SensitiveDataType;
 }> = [
-  {
-    pattern: /['"]?(?:api[_-]?key|apikey)['"]?\s*[:=]\s*['"]\S{20,}['"]/gi,
-    label: "api_key",
-  },
-  {
-    pattern: /['"]?(?:password|passwd|pwd)['"]?\s*[:=]\s*['"][^'"]{8,}['"]/gi,
-    label: "password",
-  },
-  {
-    pattern: /['"]?(?:secret|token)['"]?\s*[:=]\s*['"]\S{20,}['"]/gi,
-    label: "secret",
-  },
+  // Specific, canonical formats first (precise label wins on collisions).
   {
     pattern: /-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----/,
     label: "private_key",
@@ -127,6 +124,21 @@ export const SENSITIVE_PATTERNS: Array<{
   { pattern: /ghp_[A-Za-z0-9]{36}/, label: "github_pat" },
   { pattern: /sk-[A-Za-z0-9]{48}/, label: "openai_key" },
   { pattern: /AKIA[0-9A-Z]{16}/, label: "aws_key" },
+  // Generic key=value patterns (quoted OR unquoted value).
+  {
+    pattern:
+      /['"]?(?:api[_-]?key|apikey)['"]?\s*[:=]\s*(?:['"]\S{20,}['"]|\S{20,})/gi,
+    label: "api_key",
+  },
+  {
+    pattern:
+      /['"]?(?:password|passwd|pwd)['"]?\s*[:=]\s*(?:['"][^'"]{8,}['"]|\S{8,})/gi,
+    label: "password",
+  },
+  {
+    pattern: /['"]?(?:secret|token)['"]?\s*[:=]\s*(?:['"]\S{20,}['"]|\S{20,})/gi,
+    label: "secret",
+  },
 ];
 
 // =============================================================================

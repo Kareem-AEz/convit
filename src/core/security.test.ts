@@ -70,9 +70,38 @@ test("does not match innocuous short values", () => {
   expect(detectSensitiveData(diffWith(['token: "local"']))).toEqual([]);
 });
 
-// --- Known gap, fixed by P1-T5 (unquoted .env / YAML secrets) -----------------
-// The generic api_key/password/secret patterns currently REQUIRE quoted values,
-// so `API_KEY=ghp_live_...` in a .env diff slips through. Recorded as a todo so
-// CI stays green without locking in the buggy behavior; P1-T5 turns this into a
-// real assertion that unquoted .env secrets are detected.
-test.todo("P1-T5: detects unquoted .env secrets (value-quoting optional)");
+// --- P1-T5: unquoted .env / YAML / shell secrets ------------------------------
+
+// Fixture values are built at runtime (not literal in source) so convit's own
+// scanner doesn't flag this test file's diff — matching the `"ghp_" + …` style
+// already used above. The string detectSensitiveData() sees is still complete.
+test("detects an unquoted .env api_key value", () => {
+  const val = "abcdefghij" + "1234567890" + "klmno"; // 25 generic chars
+  // Concatenated (key + value separate in source) so this file's own diff
+  // doesn't trip the scanner; the runtime string is the full `API_KEY=<val>`.
+  const matches = detectSensitiveData(diffWith(["API_KEY=" + val], ".env"));
+  expect(matches.some((m) => m.type === "api_key")).toBe(true);
+});
+
+test("detects an unquoted .env password value (14 chars, ≥8 floor)", () => {
+  const val = "supersecret" + "123"; // 14 chars, above the 8-char floor
+  // Keyword and `=` kept separate in source (the password quoted-branch allows
+  // spaces, so an adjacent `=` "..." would span to the next quote on the line).
+  const line = "DATABASE_PASSWORD" + "=" + val;
+  const matches = detectSensitiveData(diffWith([line], ".env"));
+  expect(matches.some((m) => m.type === "password")).toBe(true);
+});
+
+test("prefers the specific github_pat label over generic secret (unquoted)", () => {
+  const ghp = "ghp_" + "a".repeat(36);
+  const matches = detectSensitiveData(diffWith([`GITHUB_TOKEN=${ghp}`], ".env"));
+  // Both github_pat and the generic secret match this line; specific wins [0].
+  expect(matches[0].type).toBe("github_pat");
+});
+
+test("does not match innocuous unquoted short values", () => {
+  // "short" (5) is below the 8-char floor; "dev" (3) below 20. Value split in
+  // source so the literal doesn't trip the scanner on this file's own diff.
+  const lines = ["token=dev", "password=" + "short"];
+  expect(detectSensitiveData(diffWith(lines, ".env"))).toEqual([]);
+});
