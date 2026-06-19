@@ -12,6 +12,7 @@
 import { type LanguageModel, streamText } from "ai";
 import { BRAILLE_SPINNER_FRAMES, pc, spinner } from "../cli/ui";
 import { validateCommitMessage } from "../core/validator";
+import { HEADER_RE } from "../types";
 import type { BuiltPrompt, Config, GenerateResult } from "../types";
 
 /**
@@ -26,9 +27,10 @@ import type { BuiltPrompt, Config, GenerateResult } from "../types";
  *   Some models wrap output in `"..."` or `'...'` quotes.
  *
  * Pass 3 — Conventional commit header extraction:
- *   Find the first line matching `[a-z]+(` pattern. Then collect: the header
- *   line → blank lines → bullet lines → stop at the first non-blank, non-bullet
- *   line after bullets have started. This strips any preamble or postamble.
+ *   Find the first line matching a conventional-commit header (`HEADER_RE`),
+ *   then keep that line and everything after it verbatim — prose bodies and
+ *   footers (`BREAKING CHANGE:`, `Co-authored-by:`, etc.) are preserved. Only a
+ *   preamble before the header and trailing blank lines are dropped.
  *
  * Pass 4 — Blank line enforcement:
  *   Git's commit format requires an empty line between the subject and body.
@@ -46,26 +48,12 @@ export function cleanCommitMessage(raw: string): string {
   }
 
   const lines = message.split("\n");
-  const startIdx = lines.findIndex((line) => /^[a-z]+\(/.test(line.trim()));
+  const startIdx = lines.findIndex((line) => HEADER_RE.test(line.trim()));
 
   if (startIdx >= 0) {
-    const validLines = [lines[startIdx]];
-    let foundBullets = false;
-
-    for (let i = startIdx + 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) {
-        validLines.push(lines[i]);
-        continue;
-      }
-      if (line.startsWith("-")) {
-        validLines.push(lines[i]);
-        foundBullets = true;
-        continue;
-      }
-      if (foundBullets) break;
-    }
-    message = validLines.join("\n").trim();
+    const body = lines.slice(startIdx);
+    while (body.length && body[body.length - 1].trim() === "") body.pop();
+    message = body.join("\n").trim();
   }
 
   // Ensure blank line between subject and body

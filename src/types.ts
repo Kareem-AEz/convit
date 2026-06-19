@@ -54,6 +54,22 @@ export const COMMIT_TYPES = [
 export type CommitType = (typeof COMMIT_TYPES)[number];
 
 /**
+ * Canonical conventional-commit header matcher — the single source of truth for
+ * "does this line look like `type(scope)?!?: subject`".
+ *
+ * Anchored on the known `COMMIT_TYPES` (not a generic `[a-z]+`) so lowercase
+ * chatter like `summary:` or prose like `useEffect(() => {` isn't mistaken for a
+ * header. Scope is optional (recognizes scopeless `feat: x`) and `!` marks a
+ * breaking change.
+ *
+ * Has no `g`/`m` flag by design: only test it against a single line at a time —
+ * `g` would make `.test()` stateful, `m` would break the per-line contract.
+ */
+export const HEADER_RE = new RegExp(
+  `^(${COMMIT_TYPES.join("|")})(\\([a-zA-Z0-9-]+\\))?!?:\\s*.+$`,
+);
+
+/**
  * A regex pattern to map a file path to a specific scope, with a weight for voting.
  */
 export interface ScopePattern {
