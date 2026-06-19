@@ -8,3 +8,9 @@ vhs.zip
 vhs_*/
 gemini.md
 .agents/skills/convit-release/
+.agents/skills/handoff/
+skills-lock.json
+
+.claude/
+docs/
+CLAUDE.md
