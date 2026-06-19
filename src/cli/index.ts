@@ -15,7 +15,7 @@
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import {
   calculateCost,
   cancel,
@@ -49,6 +49,8 @@ import type {
 import {
   getLoadedModel,
   getRecentCommits,
+  getStagedDiff,
+  getStagedFiles,
   isInitialCommit,
   verifyGitRepo,
 } from "../utils/git";
@@ -67,12 +69,7 @@ import {
  * @throws Error if no files are staged
  */
 async function getStagedContext(config: Config): Promise<StagedContext> {
-  const excludePattern = config.exclude.map((f) => `:(exclude)${f}`).join(" ");
-
-  const stagedFiles = execSync(
-    `git diff --cached --name-only ${excludePattern}`,
-    { encoding: "utf-8" },
-  ).trim();
+  const stagedFiles = getStagedFiles(config.exclude);
 
   if (!stagedFiles) {
     throw new Error(
@@ -82,10 +79,7 @@ async function getStagedContext(config: Config): Promise<StagedContext> {
 
   const fileList = stagedFiles.split("\n");
 
-  const rawDiff = execSync(
-    `git diff --cached --unified=3 --no-prefix --ignore-space-at-eol ${excludePattern}`,
-    { encoding: "utf-8" },
-  );
+  const rawDiff = getStagedDiff(config.exclude);
 
   const diffSummary = analyzeDiff(rawDiff, fileList);
   const classification = classifyChanges(diffSummary.files, rawDiff, config);
@@ -124,7 +118,7 @@ async function commitOrDryRun(message: string, config: Config): Promise<void> {
   }
 
   try {
-    execSync("git commit -F-", {
+    execFileSync("git", ["commit", "-F-"], {
       input: message,
       stdio: ["pipe", "inherit", "inherit"],
     });

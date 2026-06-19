@@ -7,7 +7,7 @@
 // processes or network endpoints (aside from the LLM generator).
 // =============================================================================
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { DEFAULT_MODEL } from "../config/defaults";
 import type { Config } from "../types";
 
@@ -58,7 +58,7 @@ export async function getLoadedModel(config: Config): Promise<string> {
  */
 export function verifyGitRepo(): void {
   try {
-    execSync("git rev-parse --is-inside-work-tree", {
+    execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
       stdio: ["ignore", "ignore", "pipe"],
     });
   } catch (err) {
@@ -86,13 +86,62 @@ export function verifyGitRepo(): void {
  */
 export function isInitialCommit(): boolean {
   try {
-    const count = execSync("git rev-list --count HEAD", {
+    const count = execFileSync("git", ["rev-list", "--count", "HEAD"], {
       encoding: "utf-8",
     }).trim();
     return count === "" || count === "0";
   } catch {
     return true;
   }
+}
+
+/**
+ * Maps user-configured exclude globs to literal `:(exclude)<path>` git pathspec
+ * argv elements.
+ *
+ * Each entry becomes exactly one argv element — no joining, no quoting, no shell.
+ * Because these are passed as discrete arguments to `execFileSync` (never
+ * interpolated into a command string), paths with spaces and shell
+ * metacharacters are handled literally and cannot inject shell commands, even
+ * though `exclude` comes from the "safe to commit" `.convitrc.json`.
+ */
+export function excludePathspecs(exclude: string[]): string[] {
+  return exclude.map((f) => `:(exclude)${f}`);
+}
+
+/**
+ * Returns the newline-separated list of staged file paths (honoring excludes).
+ *
+ * Uses `execFileSync` with an argv array — no shell is spawned, so the exclude
+ * pathspecs are passed literally (see {@link excludePathspecs}).
+ */
+export function getStagedFiles(exclude: string[], cwd?: string): string {
+  return execFileSync(
+    "git",
+    ["diff", "--cached", "--name-only", ...excludePathspecs(exclude)],
+    { encoding: "utf-8", cwd },
+  ).trim();
+}
+
+/**
+ * Returns the raw staged diff (honoring excludes).
+ *
+ * Uses `execFileSync` with an argv array — no shell is spawned, so the exclude
+ * pathspecs are passed literally (see {@link excludePathspecs}).
+ */
+export function getStagedDiff(exclude: string[], cwd?: string): string {
+  return execFileSync(
+    "git",
+    [
+      "diff",
+      "--cached",
+      "--unified=3",
+      "--no-prefix",
+      "--ignore-space-at-eol",
+      ...excludePathspecs(exclude),
+    ],
+    { encoding: "utf-8", cwd },
+  );
 }
 
 /**
@@ -112,7 +161,7 @@ export function isInitialCommit(): boolean {
  */
 export function getRecentCommits(n: number = 3): string {
   try {
-    const out = execSync(`git log -${n} --format="%B%n---"`, {
+    const out = execFileSync("git", ["log", `-${n}`, "--format=%B%n---"], {
       encoding: "utf-8",
     }).trim();
     return out.endsWith("---") ? out.slice(0, -3).trim() : out;
