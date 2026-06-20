@@ -118,7 +118,7 @@ export function excludePathspecs(exclude: string[]): string[] {
 export function getStagedFiles(exclude: string[], cwd?: string): string {
   return execFileSync(
     "git",
-    ["diff", "--cached", "--name-only", ...excludePathspecs(exclude)],
+    ["diff", "--cached", "--name-only", "-M", ...excludePathspecs(exclude)],
     { encoding: "utf-8", cwd },
   ).trim();
 }
@@ -138,10 +138,64 @@ export function getStagedDiff(exclude: string[], cwd?: string): string {
       "--unified=3",
       "--no-prefix",
       "--ignore-space-at-eol",
+      "-M",
       ...excludePathspecs(exclude),
     ],
     { encoding: "utf-8", cwd },
   );
+}
+
+/**
+ * Parses `git diff --numstat` output into per-file add/delete counts.
+ * Binary rows (`-\t-\tpath`) are skipped — they carry no line counts.
+ */
+function parseNumstat(
+  output: string,
+): Map<string, { adds: number; dels: number }> {
+  const stats = new Map<string, { adds: number; dels: number }>();
+  for (const line of output.split("\n")) {
+    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+    if (!m || m[1] === "-" || m[2] === "-") continue;
+    stats.set(m[3].trim(), { adds: Number(m[1]), dels: Number(m[2]) });
+  }
+  return stats;
+}
+
+/**
+ * Identifies files whose staged changes are purely whitespace/formatting (a
+ * prettier / eslint --fix run) by letting git decide: a file with real changes
+ * in a normal `--numstat` but `0 0` once `-w --ignore-blank-lines` is applied
+ * has no semantic change.
+ *
+ * Both passes omit `-M` so paths stay plain (a pure rename has no content delta
+ * to misread as formatting anyway). Returns an empty set on any git failure —
+ * formatting detection is an enhancement, never a hard dependency.
+ */
+export function getFormattingOnlyFiles(
+  exclude: string[],
+  cwd?: string,
+): Set<string> {
+  const numstat = (extra: string[]) =>
+    execFileSync(
+      "git",
+      ["diff", "--cached", "--numstat", ...extra, ...excludePathspecs(exclude)],
+      { encoding: "utf-8", cwd },
+    );
+
+  try {
+    const real = parseNumstat(numstat([]));
+    const ignoringWhitespace = parseNumstat(numstat(["-w", "--ignore-blank-lines"]));
+
+    const formattingOnly = new Set<string>();
+    for (const [path, { adds, dels }] of real) {
+      if (adds + dels === 0) continue; // nothing actually changed
+      const ws = ignoringWhitespace.get(path);
+      if (!ws || ws.adds + ws.dels === 0) formattingOnly.add(path);
+    }
+    return formattingOnly;
+  } catch {
+    return new Set();
+  }
 }
 
 /**

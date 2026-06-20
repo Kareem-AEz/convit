@@ -258,46 +258,106 @@ export function extractKeyChanges(
   return keyChanges;
 }
 
+/** Per-file diff section with the change type read from git's header markers. */
+interface FileSection {
+  text: string;
+  changeType: "add" | "modify" | "delete" | "rename";
+  oldPath?: string;
+}
+
+/**
+ * Splits a unified diff into per-file sections and reads each file's change type
+ * from git's header markers — `new file mode`, `deleted file mode`, and
+ * `rename from`/`rename to` — rather than guessing from add/delete line balance
+ * (which mislabels an append to an existing file as `add`).
+ *
+ * Sections are keyed by the path that `git diff --name-only` reports: for a
+ * rename (with `-M`) that is the *new* path, taken from the unambiguous
+ * `rename to` line — not the `diff --git old new` header, which can't be split
+ * reliably when a path contains spaces under `--no-prefix`.
+ */
+export function parseFileSections(diff: string): Map<string, FileSection> {
+  const sections = new Map<string, FileSection>();
+
+  for (const section of diff.split(/(?=diff --git)/)) {
+    if (!section.startsWith("diff --git")) continue;
+
+    const renameTo = section.match(/^rename to (.+)$/m);
+    if (renameTo) {
+      const newPath = renameTo[1].trim();
+      const renameFrom = section.match(/^rename from (.+)$/m);
+      sections.set(newPath, {
+        text: section,
+        changeType: "rename",
+        ...(renameFrom ? { oldPath: renameFrom[1].trim() } : {}),
+      });
+      continue;
+    }
+
+    const header = section.match(/diff --git (?:a\/)?(\S+)/);
+    if (!header) continue;
+    const path = header[1];
+
+    const changeType: FileSection["changeType"] = /^new file mode/m.test(section)
+      ? "add"
+      : /^deleted file mode/m.test(section)
+        ? "delete"
+        : "modify";
+
+    sections.set(path, { text: section, changeType });
+  }
+
+  return sections;
+}
+
 /**
  * Orchestrates full diff analysis into a structured `DiffSummary`.
  *
  * Pipeline:
  * 1. `parseDiffStats` → per-file addition/deletion counts (one pass over the diff)
  * 2. `detectBinaryFiles` → set of binary file paths
- * 3. Split the diff into per-file sections using a lookahead regex on `diff --git`
- * 4. For each file: derive changeType, extract key changes, build FileSummary
+ * 3. `parseFileSections` → per-file diff text + changeType, keyed by the path
+ *    that appears in `--name-only` (the *new* path for renames)
+ * 4. For each file: extract key changes, build FileSummary
  * 5. Calculate importance scores and sort by importance descending
+ *
+ * `formattingOnlyFiles` (from the whitespace-ignoring numstat pass in
+ * `getFormattingOnlyFiles`) marks files whose only changes are reformatting —
+ * those skip key-change extraction so re-added declarations aren't surfaced as
+ * new code.
  */
-export function analyzeDiff(diff: string, fileList: string[]): DiffSummary {
+export function analyzeDiff(
+  diff: string,
+  fileList: string[],
+  formattingOnlyFiles: Set<string> = new Set(),
+): DiffSummary {
   const diffStats = parseDiffStats(diff);
   const binaryFiles = detectBinaryFiles(diff);
+  const sections = parseFileSections(diff);
   const fileSummaries: FileSummary[] = [];
 
   let totalAdditions = 0;
   let totalDeletions = 0;
 
-  const fileDiffs = new Map<string, string>();
-  const diffSections = diff.split(/(?=diff --git)/);
-  for (const section of diffSections) {
-    const match = section.match(/diff --git (?:a\/)?(\S+)/);
-    if (match) fileDiffs.set(match[1], section);
-  }
-
   for (const file of fileList) {
     const stats = diffStats.get(file) ?? { additions: 0, deletions: 0 };
     const isBinary = binaryFiles.has(file);
     const category = categorizeFile(file);
+    const section = sections.get(file);
 
     totalAdditions += stats.additions;
     totalDeletions += stats.deletions;
 
-    let changeType: "add" | "modify" | "delete" | "rename" = "modify";
-    if (stats.additions > 0 && stats.deletions === 0) changeType = "add";
-    else if (stats.deletions > 0 && stats.additions === 0)
-      changeType = "delete";
+    const changeType = section?.changeType ?? "modify";
+    // A rename or delete is never "formatting-only"; only mark add/modify so a
+    // reformatted-and-renamed file doesn't lose its rename signal.
+    const formattingOnly =
+      formattingOnlyFiles.has(file) &&
+      (changeType === "add" || changeType === "modify");
 
-    const fileDiff = fileDiffs.get(file) ?? "";
-    const keyChanges = isBinary ? [] : extractKeyChanges(fileDiff);
+    const fileDiff = section?.text ?? "";
+    const keyChanges =
+      isBinary || formattingOnly ? [] : extractKeyChanges(fileDiff);
 
     fileSummaries.push({
       path: file,
@@ -308,6 +368,8 @@ export function analyzeDiff(diff: string, fileList: string[]): DiffSummary {
       isBinary,
       importanceScore: 0,
       keyChanges,
+      formattingOnly,
+      ...(section?.oldPath ? { oldPath: section.oldPath } : {}),
     });
   }
 

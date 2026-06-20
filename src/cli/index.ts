@@ -47,6 +47,7 @@ import type {
   StagedContext,
 } from "../types";
 import {
+  getFormattingOnlyFiles,
   getLoadedModel,
   getRecentCommits,
   getStagedDiff,
@@ -80,8 +81,9 @@ async function getStagedContext(config: Config): Promise<StagedContext> {
   const fileList = stagedFiles.split("\n");
 
   const rawDiff = getStagedDiff(config.exclude);
+  const formattingOnlyFiles = getFormattingOnlyFiles(config.exclude);
 
-  const diffSummary = analyzeDiff(rawDiff, fileList);
+  const diffSummary = analyzeDiff(rawDiff, fileList, formattingOnlyFiles);
   const classification = classifyChanges(diffSummary.files, rawDiff, config);
   const sensitiveMatches = detectSensitiveData(rawDiff);
   const { processedDiff, wasCompressed } = summarizeDiff(

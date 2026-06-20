@@ -26,6 +26,15 @@ export interface FileSummary {
   isBinary: boolean;
   importanceScore: number;
   keyChanges: string[];
+  /**
+   * True when the file's only changes are whitespace/formatting (a prettier/
+   * eslint --fix run). Derived by comparing a normal numstat against one taken
+   * with `-w --ignore-blank-lines`: real changes in the first but `0 0` in the
+   * second means nothing semantic changed. Drives the `style` vote and tells the
+   * model not to treat re-added declarations as new code.
+   */
+  formattingOnly: boolean;
+  /** Original path when `changeType === "rename"` (from `rename from`). */
   oldPath?: string;
 }
 

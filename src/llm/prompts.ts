@@ -63,7 +63,11 @@ export function buildPrompt(
   initialCommit: boolean = false,
   modelName?: string,
 ): BuiltPrompt {
-  const { processedDiff, classification, fileList } = context;
+  const { processedDiff, classification, fileList, diffSummary } = context;
+
+  const formattingOnlyFiles = diffSummary.files
+    .filter((f) => f.formattingOnly)
+    .map((f) => f.path);
 
   const rules = config.userConfig.rules ?? {};
   const maxSubject = rules.maxSubjectLength ?? MAX_SUBJECT_LENGTH;
@@ -169,6 +173,10 @@ ${
 Suggested scope: ${classification.scope}
 ${classification.secondaryScopes.length > 0 ? `Also affects: ${classification.secondaryScopes.join(", ")}\n` : ""}
 Use these hints to guide your commit message, but adjust if the actual changes suggest otherwise.`
+}${
+  formattingOnlyFiles.length > 0
+    ? `\n\nFORMATTING-ONLY (whitespace/reformatting, no logic change — prefer 'style', don't describe re-added lines as new code):\n${formattingOnlyFiles.join("\n")}`
+    : ""
 }
 
 ${DIVIDER}

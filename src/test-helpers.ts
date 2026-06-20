@@ -44,6 +44,7 @@ export function makeFile(overrides: Partial<FileSummary> = {}): FileSummary {
     isBinary: false,
     importanceScore: 0,
     keyChanges: [],
+    formattingOnly: false,
     ...overrides,
   };
 }

@@ -17,7 +17,10 @@ import {
   type FileSummary,
   type Config,
 } from "../types";
-import { DEFAULT_SCOPE_PATTERNS } from "../config/defaults";
+import {
+  DEFAULT_SCOPE_PATTERNS,
+  TRIVIAL_SOURCE_CHANGE_LINES,
+} from "../config/defaults";
 
 /**
  * Determines the most likely commit type using an additive voting system.
@@ -80,6 +83,7 @@ const RULE_LABELS: Record<string, string> = {
   rename: "renamed files",
   build: "build/tooling configs",
   ci: "CI pipeline files",
+  formatting: "formatting-only changes",
   "diff: error/catch": "diff: error/catch/try",
   "diff: perf keywords": "diff: perf keywords",
   "minimal/whitespace": "minimal/whitespace changes",
@@ -138,18 +142,42 @@ export function detectCommitType(
     revert: new Map(),
   };
 
+  // 2f: when a non-test source file changed materially, accompanying test edits
+  // shouldn't make this a `test` commit — down-weight the test vote so the
+  // source change drives the type. "Material" = a new source file or a
+  // non-formatting modify beyond a trivial line count.
+  const hasMaterialSourceChange = files.some(
+    (f) =>
+      f.category === "source" &&
+      !f.formattingOnly &&
+      (f.changeType === "add" ||
+        (f.changeType === "modify" &&
+          f.additions + f.deletions > TRIVIAL_SOURCE_CHANGE_LINES)),
+  );
+
   for (const file of files) {
-    if (file.changeType === "add" && file.category === "source") {
+    // 2a: a reformatted file casts no feat/fix vote — its added lines are
+    // re-emitted existing code, not new behavior.
+    if (
+      file.changeType === "add" &&
+      file.category === "source" &&
+      !file.formattingOnly
+    ) {
       scores.feat += 2;
       addToBreakdown(breakdowns.feat, "source add", 2, file.path);
     }
-    if (file.changeType === "modify" && file.category === "source") {
+    if (
+      file.changeType === "modify" &&
+      file.category === "source" &&
+      !file.formattingOnly
+    ) {
       scores.fix += 2;
       addToBreakdown(breakdowns.fix, "source modify", 2, file.path);
     }
     if (file.category === "test") {
-      scores.test += 5;
-      addToBreakdown(breakdowns.test, "test", 5, file.path);
+      const weight = hasMaterialSourceChange ? 1 : 5;
+      scores.test += weight;
+      addToBreakdown(breakdowns.test, "test", weight, file.path);
     }
     if (file.category === "docs") {
       scores.docs += 5;
@@ -193,25 +221,33 @@ export function detectCommitType(
       scores.ci += 5;
       addToBreakdown(breakdowns.ci, "ci", 5, file.path);
     }
+    // 2a: a pure reformat votes style — and outscores the (now suppressed)
+    // source vote so a prettier run is classified as `style`, not `fix`.
+    if (file.formattingOnly) {
+      scores.style += 5;
+      addToBreakdown(breakdowns.style, "formatting", 5, file.path);
+    }
   }
 
-  const diffLower = diff.toLowerCase();
+  // 2b: scan only added (`+`) lines, with word boundaries — so context lines,
+  // removed code, and identifiers like `cachedEncoder` don't cast spurious
+  // votes (substring `cache` over the whole diff used to fake a perf signal).
+  const addedText = diff
+    .split("\n")
+    .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
+    .join("\n")
+    .toLowerCase();
 
-  if (
-    diffLower.includes("catch") ||
-    diffLower.includes("error") ||
-    diffLower.includes("try {")
-  ) {
+  if (/\b(?:error|catch)\b/.test(addedText) || /\btry\s*\{/.test(addedText)) {
     scores.fix += 2;
     addToBreakdown(breakdowns.fix, "diff: error/catch", 2);
   }
 
   if (
-    diffLower.includes("usememo") ||
-    diffLower.includes("usecallback") ||
-    diffLower.includes("react.memo") ||
-    diffLower.includes("cache") ||
-    diffLower.includes("optimize")
+    /\buse(?:memo|callback)\b/.test(addedText) ||
+    /react\.memo\b/.test(addedText) ||
+    /\bcache\b/.test(addedText) ||
+    /\boptimi[sz]e\b/.test(addedText)
   ) {
     scores.perf += 3;
     addToBreakdown(breakdowns.perf, "diff: perf keywords", 3);
@@ -288,6 +324,37 @@ export function compileScopePatterns(config: Config): CompiledScopePattern[] {
   return compiled;
 }
 
+/**
+ * Resolves the scope(s) a single file contributes to — the one shared rule used
+ * by both primary and secondary detection (2e). A pattern match wins outright
+ * (first match, user patterns first); otherwise the category/path fallbacks
+ * apply. Returning the fallbacks here (not just to primary) is what lets
+ * docs/config/test/scripts appear as *secondary* scopes too.
+ */
+function resolveFileScopes(
+  file: FileSummary,
+  patterns: CompiledScopePattern[],
+): { scope: string; weight: number }[] {
+  for (const { regex, scope, weight } of patterns) {
+    const match = file.path.match(regex);
+    if (match) {
+      const resolvedScope =
+        scope.startsWith("$") && match[1]
+          ? scope.replace("$1", match[1])
+          : scope;
+      return [{ scope: resolvedScope, weight }];
+    }
+  }
+
+  const fallbacks: { scope: string; weight: number }[] = [];
+  if (file.category === "config") fallbacks.push({ scope: "config", weight: 3 });
+  if (file.category === "docs") fallbacks.push({ scope: "docs", weight: 3 });
+  if (file.path.startsWith("scripts/"))
+    fallbacks.push({ scope: "scripts", weight: 3 });
+  if (file.category === "test") fallbacks.push({ scope: "test", weight: 2 });
+  return fallbacks;
+}
+
 export function detectPrimaryScope(
   files: FileSummary[],
   config: Config,
@@ -299,57 +366,11 @@ export function detectPrimaryScope(
   const patterns = compiledPatterns ?? compileScopePatterns(config);
 
   for (const file of files) {
-    let matchedPattern = false;
-
-    for (const { regex, scope, weight } of patterns) {
-      const match = file.path.match(regex);
-
-      if (match) {
-        const resolvedScope =
-          scope.startsWith("$") && match[1]
-            ? scope.replace("$1", match[1])
-            : scope;
-
-        scopeCandidates.set(
-          resolvedScope,
-          (scopeCandidates.get(resolvedScope) ?? 0) + weight,
-        );
-        const paths = scopeSources.get(resolvedScope) ?? [];
-        paths.push(file.path);
-        scopeSources.set(resolvedScope, paths);
-        matchedPattern = true;
-        break;
-      }
-    }
-
-    if (!matchedPattern) {
-      if (file.category === "config") {
-        scopeCandidates.set("config", (scopeCandidates.get("config") ?? 0) + 3);
-        const paths = scopeSources.get("config") ?? [];
-        paths.push(file.path);
-        scopeSources.set("config", paths);
-      }
-      if (file.category === "docs") {
-        scopeCandidates.set("docs", (scopeCandidates.get("docs") ?? 0) + 3);
-        const paths = scopeSources.get("docs") ?? [];
-        paths.push(file.path);
-        scopeSources.set("docs", paths);
-      }
-      if (file.path.startsWith("scripts/")) {
-        scopeCandidates.set(
-          "scripts",
-          (scopeCandidates.get("scripts") ?? 0) + 3,
-        );
-        const paths = scopeSources.get("scripts") ?? [];
-        paths.push(file.path);
-        scopeSources.set("scripts", paths);
-      }
-      if (file.category === "test") {
-        scopeCandidates.set("test", (scopeCandidates.get("test") ?? 0) + 2);
-        const paths = scopeSources.get("test") ?? [];
-        paths.push(file.path);
-        scopeSources.set("test", paths);
-      }
+    for (const { scope, weight } of resolveFileScopes(file, patterns)) {
+      scopeCandidates.set(scope, (scopeCandidates.get(scope) ?? 0) + weight);
+      const paths = scopeSources.get(scope) ?? [];
+      paths.push(file.path);
+      scopeSources.set(scope, paths);
     }
   }
 
@@ -384,26 +405,12 @@ export function detectSecondaryScopes(
   const patterns = compiledPatterns ?? compileScopePatterns(config);
 
   for (const file of files) {
-    for (const { regex, scope } of patterns) {
-      const match = file.path.match(regex);
-
-      if (match) {
-        const resolvedScope =
-          scope.startsWith("$") && match[1]
-            ? scope.replace("$1", match[1])
-            : scope;
-
-        if (resolvedScope !== primaryScope) {
-          scopeCounts.set(
-            resolvedScope,
-            (scopeCounts.get(resolvedScope) ?? 0) + 1,
-          );
-          const paths = scopeSources.get(resolvedScope) ?? [];
-          paths.push(file.path);
-          scopeSources.set(resolvedScope, paths);
-        }
-        break;
-      }
+    for (const { scope } of resolveFileScopes(file, patterns)) {
+      if (scope === primaryScope) continue;
+      scopeCounts.set(scope, (scopeCounts.get(scope) ?? 0) + 1);
+      const paths = scopeSources.get(scope) ?? [];
+      paths.push(file.path);
+      scopeSources.set(scope, paths);
     }
   }
 

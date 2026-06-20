@@ -23,6 +23,13 @@ export const MIN_BULLETS = 1;
 export const MAX_SUBJECT_LENGTH = 50;
 export const MAX_BULLET_LENGTH = 72;
 
+/**
+ * A source `modify` changing this many lines or fewer is "trivial" — it won't
+ * suppress the `test` vote when a `.test.ts` co-changes. Above it, the source
+ * change is the point of the commit, not the accompanying test (see 2f).
+ */
+export const TRIVIAL_SOURCE_CHANGE_LINES = 3;
+
 /** Files excluded from diff context (noise, auto-generated, or oversized) */
 export const EXCLUDED_FILES = [
   "package-lock.json",

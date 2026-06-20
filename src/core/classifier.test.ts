@@ -42,10 +42,11 @@ test("detectCommitType: a new source file votes feat", () => {
 test("detectCommitType: votes are additive across signals", () => {
   const { scores } = detectCommitType(
     [makeFile({ path: "a.test.ts", category: "test", keyChanges: ["x"] })],
-    "try { doThing() } catch (error) {}",
+    // Added (`+`) lines only — the 2b scan ignores context/removed lines.
+    "+try { doThing() } catch (error) {}",
   );
   expect(scores.test).toBe(5);
-  expect(scores.fix).toBe(2); // diff: error/catch
+  expect(scores.fix).toBe(2); // diff: error/catch on an added line
 });
 
 test("detectCommitType: a .github/workflows change votes ci", () => {
@@ -98,6 +99,110 @@ test("classifyChanges: confidence scales with the winning score", () => {
     cfg,
   );
   expect(twoTests.confidence).toBe("high"); // score 10
+});
+
+test("detectCommitType: 2a — a formatting-only file votes style, not fix", () => {
+  const { type, scores } = detectCommitType(
+    [
+      makeFile({
+        path: "src/a.ts",
+        category: "source",
+        changeType: "modify",
+        additions: 10,
+        deletions: 10,
+        formattingOnly: true,
+      }),
+    ],
+    "",
+  );
+  expect(type).toBe("style");
+  expect(scores.fix).toBe(0); // source-modify vote is suppressed
+  expect(scores.style).toBeGreaterThanOrEqual(5);
+});
+
+test("detectCommitType: 2b — the `cachedEncoder` identifier casts no perf vote", () => {
+  const { scores } = detectCommitType(
+    [
+      makeFile({
+        path: "src/tokenizer.ts",
+        category: "source",
+        changeType: "modify",
+        additions: 5,
+      }),
+    ],
+    "+const cachedEncoder = createEncoder();",
+  );
+  expect(scores.perf).toBe(0); // word boundary: `cached` ≠ `cache`
+});
+
+test("detectCommitType: 2b — a keyword on a removed line casts no vote", () => {
+  // A docs file (no source-modify fix vote) isolates the diff-content vote: the
+  // `catch` is on a removed (`-`) line, so the added-lines scan must not see it.
+  const { breakdowns } = detectCommitType(
+    [makeFile({ path: "README.md", category: "docs", changeType: "modify" })],
+    "-} catch (error) {",
+  );
+  expect(breakdowns.fix.size).toBe(0);
+});
+
+test("detectCommitType: 2f — a material source change down-weights co-changed tests", () => {
+  const { type } = detectCommitType(
+    [
+      makeFile({
+        path: "src/defaults.ts",
+        category: "source",
+        changeType: "modify",
+        additions: 20,
+        deletions: 5,
+      }),
+      makeFile({
+        path: "src/defaults.test.ts",
+        category: "test",
+        changeType: "modify",
+        additions: 30,
+        keyChanges: ["x"],
+      }),
+    ],
+    "+const FLOOR = 8;",
+  );
+  expect(type).not.toBe("test"); // the behavioral source change drives the type
+  expect(type).toBe("fix");
+});
+
+test("detectCommitType: 2f — a trivial source tweak still lets tests win", () => {
+  const { type, scores } = detectCommitType(
+    [
+      makeFile({
+        path: "src/a.ts",
+        category: "source",
+        changeType: "modify",
+        additions: 1,
+        deletions: 0,
+      }),
+      makeFile({
+        path: "src/a.test.ts",
+        category: "test",
+        changeType: "modify",
+        additions: 40,
+        keyChanges: ["x"],
+      }),
+    ],
+    "",
+  );
+  expect(type).toBe("test");
+  expect(scores.test).toBe(5); // full weight — source change is trivial
+});
+
+test("detectSecondaryScopes: 2e — docs can be a secondary scope", () => {
+  // Pre-2e, only pattern-matched scopes could be secondary; the docs/config/test
+  // fallbacks were primary-only. Now they share one resolver.
+  const files = [
+    makeFile({ path: "src/core/a.ts", category: "source" }),
+    makeFile({ path: "README.md", category: "docs" }),
+    makeFile({ path: "CONTRIBUTING.md", category: "docs" }),
+  ];
+  const { scopes } = detectSecondaryScopes(files, "core", makeConfig());
+  expect(scopes).toContain("docs");
 });
 
 test("detectPrimaryScope: $1 capture group resolves the scope", () => {

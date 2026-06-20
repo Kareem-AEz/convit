@@ -44,7 +44,7 @@ describe("getStagedFiles", () => {
     getStagedFiles(["foo; rm -rf ~"]);
     expect(mockExec).toHaveBeenCalledWith(
       "git",
-      ["diff", "--cached", "--name-only", ":(exclude)foo; rm -rf ~"],
+      ["diff", "--cached", "--name-only", "-M", ":(exclude)foo; rm -rf ~"],
       expect.objectContaining({ encoding: "utf-8" }),
     );
   });
@@ -53,7 +53,7 @@ describe("getStagedFiles", () => {
     getStagedFiles(["drop me.txt"]);
     expect(mockExec).toHaveBeenCalledWith(
       "git",
-      ["diff", "--cached", "--name-only", ":(exclude)drop me.txt"],
+      ["diff", "--cached", "--name-only", "-M", ":(exclude)drop me.txt"],
       expect.objectContaining({ encoding: "utf-8" }),
     );
   });
@@ -67,7 +67,7 @@ describe("getStagedFiles", () => {
     getStagedFiles([], "/tmp/repo");
     expect(mockExec).toHaveBeenCalledWith(
       "git",
-      ["diff", "--cached", "--name-only"],
+      ["diff", "--cached", "--name-only", "-M"],
       expect.objectContaining({ cwd: "/tmp/repo" }),
     );
   });
@@ -84,6 +84,7 @@ describe("getStagedDiff", () => {
         "--unified=3",
         "--no-prefix",
         "--ignore-space-at-eol",
+        "-M",
         ":(exclude)dist",
         ":(exclude)weird; name",
       ],
