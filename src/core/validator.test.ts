@@ -97,9 +97,40 @@ test("generateCorrectionHints flags missing bullets against minBullets", () => {
 // Recorded as todos (intended spec-correct behavior in the name) so they go
 // red→green with their fix PRs rather than locking in today's wrong behavior.
 
-// P2-T1: the grammar hardcodes a mandatory scope, so spec-valid scopeless
-// `fix: x` is wrongly rejected.
-test.todo("P2-T1: accepts spec-valid scopeless messages like `fix: x`");
+// P2-T1: one grammar, one source of truth (HEADER_RE). Scope is now optional,
+// `!` marks breaking changes, and the standard types build/ci/revert are valid.
+test("P2-T1: accepts spec-valid scopeless messages like `fix: x`", () => {
+  const result = validateCommitMessage("fix: handle null user", makeConfig());
+  expect(result.isValid).toBe(true);
+  expect(result.errors).toEqual([]);
+});
+
+test("P2-T1: accepts the `!` breaking-change marker", () => {
+  const result = validateCommitMessage("feat(api)!: drop v1 endpoints", makeConfig());
+  expect(result.isValid).toBe(true);
+  expect(result.errors).toEqual([]);
+});
+
+test("P2-T1: accepts the standard build/ci/revert types", () => {
+  for (const header of ["build: bump tsup", "ci: cache npm", "revert: undo a1b2c3"]) {
+    const result = validateCommitMessage(header, makeConfig());
+    expect(result.isValid, header).toBe(true);
+  }
+});
+
+test("P2-T1: a BREAKING CHANGE footer in the body does not fail validation", () => {
+  const result = validateCommitMessage(
+    "feat(api): add v2\n\n- new route\n\nBREAKING CHANGE: v1 removed",
+    makeConfig(),
+  );
+  expect(result.isValid).toBe(true);
+  expect(result.errors).toEqual([]);
+});
+
+test("P2-T1: generateCorrectionHints accepts a scopeless header (no invalid_format)", () => {
+  const hints = generateCorrectionHints("fix: handle null user", makeConfig());
+  expect(hints.some((h) => h.issue === "invalid_format")).toBe(false);
+});
 
 // Phase 1 quick win (DONE): "update project dependencies" is a real, common
 // chore subject — it must no longer be treated as a copied example.

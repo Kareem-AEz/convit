@@ -48,6 +48,36 @@ test("detectCommitType: votes are additive across signals", () => {
   expect(scores.fix).toBe(2); // diff: error/catch
 });
 
+test("detectCommitType: a .github/workflows change votes ci", () => {
+  const { type, scores } = detectCommitType(
+    [
+      makeFile({
+        path: ".github/workflows/ci.yml",
+        category: "config",
+        keyChanges: ["a"],
+      }),
+    ],
+    "",
+  );
+  expect(type).toBe("ci");
+  expect(scores.ci).toBe(5);
+});
+
+test("detectCommitType: a *.config.ts bundler change votes build", () => {
+  const { type } = detectCommitType(
+    [
+      makeFile({
+        path: "tsup.config.ts",
+        category: "source",
+        changeType: "modify",
+        keyChanges: ["a"],
+      }),
+    ],
+    "",
+  );
+  expect(type).toBe("build");
+});
+
 test("classifyChanges: confidence scales with the winning score", () => {
   const cfg = makeConfig();
 

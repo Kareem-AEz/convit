@@ -48,6 +48,9 @@ export const COMMIT_TYPES = [
   "perf",
   "test",
   "chore",
+  "build",
+  "ci",
+  "revert",
 ] as const;
 
 /** Commit type for classification */

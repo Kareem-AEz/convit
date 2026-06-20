@@ -25,6 +25,9 @@ function makeClassification(): ChangeClassification {
       perf: 0,
       test: 0,
       chore: 0,
+      build: 0,
+      ci: 0,
+      revert: 0,
     },
   };
 }

@@ -15,7 +15,13 @@ import {
   MIN_BULLETS,
   RETRY_TEMPERATURES,
 } from "../config/defaults";
-import type { Config, CorrectionHint, ValidationResult } from "../types";
+import {
+  COMMIT_TYPES,
+  HEADER_RE,
+  type Config,
+  type CorrectionHint,
+  type ValidationResult,
+} from "../types";
 
 /**
  * Returns the temperature for a given retry attempt.
@@ -109,14 +115,11 @@ export function generateCorrectionHints(
     }
   });
 
-  const conventionalCommitRegex =
-    /^(feat|fix|chore|refactor|docs|style|test|perf)\([a-zA-Z0-9-]+\):\s*.+$/;
-  if (!conventionalCommitRegex.test(firstLine)) {
+  if (!HEADER_RE.test(firstLine)) {
     corrections.push({
       issue: "invalid_format",
       description: "First line doesn't match conventional commit format",
-      suggestion:
-        "Use format: type(scope): subject — where type is feat/fix/chore/refactor/docs/style/test/perf.",
+      suggestion: `Use format: type(scope): subject — scope is optional and type is one of ${COMMIT_TYPES.join("/")}.`,
       priority: "must_fix",
     });
   }
@@ -233,11 +236,8 @@ export function validateCommitMessage(
   }
 
   const firstLine = lines[0];
-  const conventionalCommitRegex =
-    /^(feat|fix|chore|refactor|docs|style|test|perf)\([a-zA-Z0-9-]+\):\s*.+$/;
-
-  if (!conventionalCommitRegex.test(firstLine)) {
-    errors.push("First line must match: type(scope): subject");
+  if (!HEADER_RE.test(firstLine)) {
+    errors.push("First line must match: type(scope): subject (scope optional)");
   }
 
   const subjectMatch = firstLine.match(/:\s*(.+)$/);

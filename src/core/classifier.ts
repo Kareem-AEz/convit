@@ -9,12 +9,13 @@
 // Pure functions — no I/O, no side effects.
 // =============================================================================
 
-import type {
-  ChangeClassification,
-  CommitType,
-  FileCategory,
-  FileSummary,
-  Config,
+import {
+  COMMIT_TYPES,
+  type ChangeClassification,
+  type CommitType,
+  type FileCategory,
+  type FileSummary,
+  type Config,
 } from "../types";
 import { DEFAULT_SCOPE_PATTERNS } from "../config/defaults";
 
@@ -77,6 +78,8 @@ const RULE_LABELS: Record<string, string> = {
   generated: "generated files",
   scripts: "scripts",
   rename: "renamed files",
+  build: "build/tooling configs",
+  ci: "CI pipeline files",
   "diff: error/catch": "diff: error/catch/try",
   "diff: perf keywords": "diff: perf keywords",
   "minimal/whitespace": "minimal/whitespace changes",
@@ -116,6 +119,9 @@ export function detectCommitType(
     perf: 0,
     test: 0,
     chore: 0,
+    build: 0,
+    ci: 0,
+    revert: 0,
   };
 
   const breakdowns: Record<CommitType, TypeBreakdown> = {
@@ -127,6 +133,9 @@ export function detectCommitType(
     perf: new Map(),
     test: new Map(),
     chore: new Map(),
+    build: new Map(),
+    ci: new Map(),
+    revert: new Map(),
   };
 
   for (const file of files) {
@@ -161,6 +170,28 @@ export function detectCommitType(
     if (file.changeType === "rename") {
       scores.refactor += 3;
       addToBreakdown(breakdowns.refactor, "rename", 3, file.path);
+    }
+    // Build tooling: bundler/build configs (*.config.{ts,js,…}) and Docker.
+    // Weight 5 so a tooling-only change outscores the +2/+4 source/config votes
+    // these same files also cast.
+    if (
+      /(?:^|\/)Dockerfile(?:\.[\w.-]+)?$/.test(file.path) ||
+      /(?:^|\/)\.dockerignore$/.test(file.path) ||
+      /\.config\.(?:ts|js|mjs|cjs)$/.test(file.path)
+    ) {
+      scores.build += 5;
+      addToBreakdown(breakdowns.build, "build", 5, file.path);
+    }
+    // CI pipelines: GitHub Actions workflows and common CI configs.
+    if (
+      file.path.startsWith(".github/workflows/") ||
+      /(?:^|\/)\.gitlab-ci\.yml$/.test(file.path) ||
+      /(?:^|\/)\.travis\.yml$/.test(file.path) ||
+      /(?:^|\/)azure-pipelines\.yml$/.test(file.path) ||
+      file.path.includes(".circleci/")
+    ) {
+      scores.ci += 5;
+      addToBreakdown(breakdowns.ci, "ci", 5, file.path);
     }
   }
 
@@ -400,17 +431,6 @@ function formatScorecard(
   secondaryScopeSources: Map<string, string[]>,
   totalScore: number,
 ): string {
-  const COMMIT_TYPES: CommitType[] = [
-    "feat",
-    "fix",
-    "docs",
-    "style",
-    "refactor",
-    "perf",
-    "test",
-    "chore",
-  ];
-
   const lines: string[] = [];
 
   // Type scores (only types with score > 0), sorted by score descending
