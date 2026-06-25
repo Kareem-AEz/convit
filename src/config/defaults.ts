@@ -6,7 +6,7 @@
 // provides the fallback defaults.
 // =============================================================================
 
-import type { ScopePattern, SensitiveDataType } from "../types";
+import type { CommitType, ScopePattern, SensitiveDataType } from "../types";
 
 export const DEFAULT_MODEL = "openai/gpt-oss-20b";
 
@@ -22,6 +22,27 @@ export const TEMPERATURE = 0.2;
 export const MIN_BULLETS = 1;
 export const MAX_SUBJECT_LENGTH = 50;
 export const MAX_BULLET_LENGTH = 72;
+
+/**
+ * Tie-break precedence for the type vote: when two commit types score equal, the
+ * one earlier in this list wins. Made explicit (rather than relying on the
+ * scores-object key order it used to depend on) so that reordering that object
+ * can't silently change classification. `feat`/`fix` lead because they are the
+ * most meaningful headlines when file signals are otherwise balanced.
+ */
+export const TYPE_TIE_BREAK_ORDER: CommitType[] = [
+  "feat",
+  "fix",
+  "docs",
+  "style",
+  "refactor",
+  "perf",
+  "test",
+  "chore",
+  "build",
+  "ci",
+  "revert",
+];
 
 /**
  * A source `modify` changing this many lines or fewer is "trivial" — it won't

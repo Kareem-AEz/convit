@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_SCOPE_PATTERNS,
   TRIVIAL_SOURCE_CHANGE_LINES,
+  TYPE_TIE_BREAK_ORDER,
 } from "../config/defaults";
 
 /**
@@ -280,15 +281,15 @@ export function detectCommitType(
     addToBreakdown(breakdowns.style, "minimal/whitespace", 2);
   }
 
+  // Walk types in an explicit precedence order (not the scores-object key order)
+  // so equal scores resolve deterministically and intentionally. `> maxScore`
+  // means the first type in TYPE_TIE_BREAK_ORDER to reach the max wins the tie.
   let maxScore = 0;
   let detectedType: CommitType = "chore";
 
-  for (const [type, score] of Object.entries(scores) as [
-    CommitType,
-    number,
-  ][]) {
-    if (score > maxScore) {
-      maxScore = score;
+  for (const type of TYPE_TIE_BREAK_ORDER) {
+    if (scores[type] > maxScore) {
+      maxScore = scores[type];
       detectedType = type;
     }
   }

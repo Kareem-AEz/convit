@@ -92,11 +92,11 @@ export function categorizeFile(filePath: string): FileCategory {
  * Scoring algorithm (additive weighted):
  * - Base score: 50
  * - Category bonus: source=+40, test=+30, config=+20, docs=+15, other=+10, asset=+5, generated=+0
- * - Feature file bonus: +15 if inside `src/features/` (feature-sliced architecture)
  * - Change type bonus: add=+10, delete=+5, modify=+0
  * - Change size bonus: >100 lines=+15, >50=+10, >10=+5
  * - Binary penalty: -20 (binary diffs carry no semantic information)
  *
+ * Path depth is deliberately NOT a factor — see the note in the body.
  * The result is clamped to [0, 100].
  */
 export function calculateImportanceScore(file: FileSummary): number {
@@ -113,10 +113,10 @@ export function calculateImportanceScore(file: FileSummary): number {
   };
   score += categoryScores[file.category];
 
-  // User configured scopes get bumped importance
-  // (We don't need to bump src/features/ explicitly here anymore, let the general algorithm handle it
-  // based on additions/deletions/category, but we'll leave a small bump for deep paths)
-  if (file.path.split("/").length > 2) score += 10;
+  // Importance is driven by category, change type, and change size — not by how
+  // deeply a file is nested. A path-depth bonus penalized flat-repo source files
+  // (e.g. `src/index.ts`) relative to identical files in deeper trees, which is
+  // noise, so it was removed.
 
   if (file.changeType === "add") score += 10;
   else if (file.changeType === "delete") score += 5;

@@ -36,7 +36,7 @@ test("categorizeFile classifies by priority order", () => {
 });
 
 test("calculateImportanceScore is additive and clamped to [0,100]", () => {
-  // 50 base + 40 source + 10 deep-path + 10 add + 0 (≤10 changes) = 110 → clamp 100
+  // 50 base + 40 source + 10 add + 15 (>100 changes... here ≤10 → +0) = 100
   const source = makeFile({
     path: "src/a/b.ts",
     category: "source",
@@ -46,7 +46,7 @@ test("calculateImportanceScore is additive and clamped to [0,100]", () => {
   });
   expect(calculateImportanceScore(source)).toBe(100);
 
-  // 50 base + 15 docs + 0 (shallow path) + 0 modify + 0 = 65
+  // 50 base + 15 docs + 0 modify + 0 = 65
   const docs = makeFile({
     path: "README.md",
     category: "docs",
@@ -56,7 +56,7 @@ test("calculateImportanceScore is additive and clamped to [0,100]", () => {
   });
   expect(calculateImportanceScore(docs)).toBe(65);
 
-  // binary penalty applies: 50 + 5 asset + 0 shallow + 10 add - 20 binary = 45
+  // binary penalty applies: 50 + 5 asset + 10 add - 20 binary = 45
   const binary = makeFile({
     path: "logo.png",
     category: "asset",
@@ -64,6 +64,22 @@ test("calculateImportanceScore is additive and clamped to [0,100]", () => {
     isBinary: true,
   });
   expect(calculateImportanceScore(binary)).toBe(45);
+});
+
+test("calculateImportanceScore ignores path depth (flat == nested)", () => {
+  // A flat-repo source file and a deeply-nested one, identical otherwise, must
+  // score the same — importance is semantic, not directory nesting.
+  const common = {
+    category: "source" as const,
+    changeType: "modify" as const,
+    additions: 20,
+    deletions: 5,
+  };
+  const flat = makeFile({ path: "index.ts", ...common });
+  const nested = makeFile({ path: "src/a/b/c/index.ts", ...common });
+  expect(calculateImportanceScore(flat)).toBe(
+    calculateImportanceScore(nested),
+  );
 });
 
 test("parseDiffStats counts additions and deletions per file", () => {
