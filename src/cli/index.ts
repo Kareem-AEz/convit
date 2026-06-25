@@ -16,6 +16,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { execFileSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
 import {
   calculateCost,
   cancel,
@@ -114,21 +115,45 @@ async function getStagedContext(
 }
 
 /**
- * Executes `git commit` using stdin piping, or simulates it in dry-run mode.
+ * Where a finalized commit message is written.
+ * - `commit`: run `git commit` (the interactive default).
+ * - `file`: write to a path (the git-hook path) — convit's message is prepended
+ *   above `existing` (git's comment/diff block) so the user still sees it.
+ */
+type WriteTarget =
+  | { kind: "commit" }
+  | { kind: "file"; path: string; existing: string };
+
+/**
+ * Writes a finalized commit message to its target, or simulates it in dry-run.
  *
- * Why `git commit -F-` instead of `git commit -m "..."`?
- * The `-m` flag passes the message as a shell argument. Multi-line messages
- * with special characters would require complex escaping. `-F-` reads from
- * stdin, bypassing the shell entirely.
+ * Trailers are appended here — the single terminal write step, after the
+ * edit/regenerate loop — so they're never fed back to the model or stacked on a
+ * regenerate, and so they apply uniformly whether convit commits directly or
+ * populates a hook's commit-msg file.
+ *
+ * Why `git commit -F-` (commit target) instead of `git commit -m "..."`?
+ * The `-m` flag passes the message as a shell argument; multi-line messages with
+ * special characters would require complex escaping. `-F-` reads from stdin,
+ * bypassing the shell entirely.
  */
 async function commitOrDryRun(
   message: string,
   config: Config,
   model?: string,
+  target: WriteTarget = { kind: "commit" },
 ): Promise<void> {
-  // Append trailers at the terminal write step — after the edit/regenerate loop —
-  // so they're never fed back to the model or stacked on a regenerate.
   const finalMessage = appendTrailers(message, config.trailers, model);
+
+  if (target.kind === "file") {
+    // Prepend convit's message above git's existing comment/diff block so the
+    // editor opens pre-filled and the user keeps the usual context below.
+    const body = target.existing
+      ? `${finalMessage}\n${target.existing}`
+      : `${finalMessage}\n`;
+    writeFileSync(target.path, body, "utf-8");
+    return;
+  }
 
   if (config.dryRun) {
     note(`Would commit: ${finalMessage.split("\n")[0]}`, "Dry-run");
@@ -282,17 +307,14 @@ function printDebugOutput(
  * Max retries gate:
  *   After MAX_RETRY_ATTEMPTS, the "regenerate" option is removed from the prompt.
  */
-export async function runInteractiveLoop(config: Config): Promise<void> {
-  // -- ENVIRONMENT VALIDATION --
-  try {
-    verifyGitRepo();
-  } catch (err) {
-    cancel(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-
-  // -- PROVIDER SETUP --
-  // Provider is built after config is resolved so CLI flags take effect
+/**
+ * Builds the AI-SDK language model and resolves its id. Shared by the
+ * interactive loop and the git-hook runtime so provider setup lives in one place.
+ */
+async function createModel(
+  config: Config,
+): Promise<{ model: LanguageModel; modelName: string }> {
+  // Provider is built after config is resolved so CLI flags take effect.
   const provider = createOpenAICompatible({
     name: "lmstudio",
     baseURL: config.apiUrl,
@@ -304,9 +326,104 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     // path is untouched, and unsupported endpoints fall back to it.
     supportsStructuredOutputs: true,
   });
-
   const modelName = await getLoadedModel(config);
-  const model = provider(modelName) as LanguageModel;
+  return { model: provider(modelName) as LanguageModel, modelName };
+}
+
+/**
+ * Git-hook runtime (`convit hook run <msgFile> <source> <sha>`), invoked by the
+ * installed `prepare-commit-msg` hook. Generates one message non-interactively
+ * and writes it into the commit-msg file, then lets git's editor flow take over.
+ *
+ * Fails open: any error (bad repo, no model, API failure) leaves the message
+ * file untouched and returns, so convit never blocks a commit.
+ *
+ * Respects an existing message: git passes a non-empty `source` for `-m`/`-F`
+ * (`message`), merges, squashes, amends (`commit`), and templates — convit only
+ * generates for a bare `git commit` (empty source). A message file that already
+ * holds a real (non-comment) line is also left untouched. This is also why
+ * convit's own `git commit -F-` (source `message`) is a safe no-op once the hook
+ * is installed.
+ */
+export async function runHook(
+  config: Config,
+  msgFile: string,
+  source: string,
+  _sha: string,
+): Promise<void> {
+  try {
+    if (source) return; // git already has a message (-m/-F/merge/squash/amend/template)
+
+    verifyGitRepo();
+
+    let existing = "";
+    try {
+      existing = readFileSync(msgFile, "utf-8");
+    } catch {
+      existing = "";
+    }
+    // A real (non-comment, non-blank) line means a message is already present.
+    const hasMessage = existing
+      .split("\n")
+      .some((l) => l.trim() && !l.trim().startsWith("#"));
+    if (hasMessage) return;
+
+    const recentCommits = getRecentCommits();
+    const context = await getStagedContext(config, recentCommits);
+    if (context.fileList.length === 0) return; // nothing staged → let git handle it
+
+    // Never POST a secret-bearing diff to the model. Warn in the file (commented)
+    // and bail — fail open so the user can still write the message by hand. The
+    // editor opens with this warning, the analog of --accept's hard block in a
+    // context where a human is present.
+    if (context.sensitiveMatches.length > 0) {
+      const warning =
+        "# convit: sensitive data detected in the staged diff — message not generated.\n" +
+        "# Review your changes and write the commit message manually.\n";
+      writeFileSync(msgFile, warning + existing, "utf-8");
+      return;
+    }
+
+    const { model, modelName } = await createModel(config);
+    const state: SessionState = {
+      attemptCount: 0,
+      mode: "normal",
+      userDescription: "",
+      previousOutput: null,
+      previousValidation: null,
+    };
+    const prompt = buildPrompt(
+      context,
+      state,
+      recentCommits,
+      config,
+      isInitialCommit(),
+      modelName,
+    );
+
+    const result = await generateCommit(model, prompt, modelName, config);
+    await commitOrDryRun(result.message, config, modelName, {
+      kind: "file",
+      path: msgFile,
+      existing,
+    });
+  } catch {
+    // Fail open: leave the message file exactly as git left it.
+    return;
+  }
+}
+
+export async function runInteractiveLoop(config: Config): Promise<void> {
+  // -- ENVIRONMENT VALIDATION --
+  try {
+    verifyGitRepo();
+  } catch (err) {
+    cancel(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  // -- PROVIDER SETUP --
+  const { model, modelName } = await createModel(config);
   const recentCommits = getRecentCommits();
   const initialCommit = isInitialCommit();
 

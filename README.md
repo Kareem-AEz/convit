@@ -343,6 +343,8 @@ The skill triggers on: convit setup, .convitrc, commit scopes, convit init. Use 
 ```text
 convit                  interactive commit workflow
 convit init             setup wizard, writes .convitrc.json
+convit hook install     install a prepare-commit-msg git hook
+convit hook uninstall   remove the convit git hook
 convit --accept         auto-accept first valid message (CI / automation)
 convit --debug          print prompt, DiffSummary, classification, full scorecard
 convit --dry-run        generate without committing
@@ -351,6 +353,10 @@ convit --no-compress    send raw diff, bypass summarization
 ```
 
 Interactive loop: accept, regenerate, edit, or cancel.
+
+### Git hook
+
+`convit hook install` adds a `prepare-commit-msg` hook so a plain `git commit` (without `-m`) opens your editor pre-filled with a generated message — review, edit, or abort as usual. It only generates for a bare commit (it respects `-m`/`-F`, merges, squashes, amends, and any message you've already written) and **fails open**, so a convit error never blocks your commit. Needs `convit` resolvable on `PATH` (global install recommended). Remove it with `convit hook uninstall`, which restores any hook it backed up.
 
 ---
 
