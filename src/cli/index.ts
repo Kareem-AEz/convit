@@ -56,6 +56,7 @@ import {
   isInitialCommit,
   verifyGitRepo,
 } from "../utils/git";
+import { isLocalUrl } from "../utils/url";
 
 /**
  * Fetches and fully enriches all staged git changes into a ready-to-use context.
@@ -141,10 +142,9 @@ async function commitOrDryRun(message: string, config: Config): Promise<void> {
 const SEP = "═".repeat(60);
 const SUB = "─".repeat(60);
 
-/** Local Mode: URL is localhost or 127.0.0.1 — data never leaves the machine. */
+/** Local Mode: URL host is a loopback address — data never leaves the machine. */
 function isLocalMode(config: Config): boolean {
-  const u = config.apiUrl.toLowerCase();
-  return u.includes("localhost") || u.includes("127.0.0.1");
+  return isLocalUrl(config.apiUrl);
 }
 
 function printDebugOutput(

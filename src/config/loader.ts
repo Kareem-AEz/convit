@@ -1,6 +1,7 @@
 import { DEFAULT_TIMEOUT_MS, EXCLUDED_FILES } from "./defaults";
 import { cosmiconfigSync } from "cosmiconfig";
 import { pc } from "../cli/ui";
+import { isLocalUrl } from "../utils/url";
 import type { Config, UserConfig } from "../types";
 
 /**
@@ -113,7 +114,7 @@ export function getConfig(): Config {
     console.log();
   }
 
-  if (!config.apiUrl.includes("localhost")) {
+  if (!isLocalUrl(config.apiUrl)) {
     const missing: string[] = [];
     if (config.apiKey === "lm-studio") missing.push("API Key");
     if (!config.model) missing.push("Model ID");
@@ -129,7 +130,7 @@ export function getConfig(): Config {
     }
   }
 
-  if (config.apiKey !== "lm-studio" && config.apiUrl.includes("localhost")) {
+  if (config.apiKey !== "lm-studio" && isLocalUrl(config.apiUrl)) {
     console.log(pc.yellow("API Key is set but using default localhost URL."));
     console.log(
       pc.dim("  If using an external provider, configure the base URL.\n"),
