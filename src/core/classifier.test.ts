@@ -145,6 +145,35 @@ test("detectCommitType: 2b — a keyword on a removed line casts no vote", () =>
   expect(breakdowns.fix.size).toBe(0);
 });
 
+test("detectCommitType: a fixture string in a test file casts no diff vote", () => {
+  // A test fixture `throw new Error(...)` is not behavior — scoped off the scan,
+  // it must not add a `fix` vote that could mislabel a real feature.
+  const diff = [
+    "diff --git src/x.test.ts src/x.test.ts",
+    "+++ src/x.test.ts",
+    "+  expect(() => f()).toThrow(new Error('catch me'));",
+  ].join("\n");
+  const { breakdowns } = detectCommitType(
+    [makeFile({ path: "src/x.test.ts", category: "test", keyChanges: ["a"] })],
+    diff,
+  );
+  expect(breakdowns.fix.has("diff: error/catch")).toBe(false);
+});
+
+test("detectCommitType: a comment keyword casts no diff vote", () => {
+  // `// optimize later` is intent, not a perf change.
+  const diff = [
+    "diff --git src/x.ts src/x.ts",
+    "+++ src/x.ts",
+    "+  // TODO: optimize this cache lookup later",
+  ].join("\n");
+  const { breakdowns } = detectCommitType(
+    [makeFile({ path: "src/x.ts", category: "source", changeType: "modify" })],
+    diff,
+  );
+  expect(breakdowns.perf.size).toBe(0);
+});
+
 test("detectCommitType: 2f — a material source change down-weights co-changed tests", () => {
   const { type } = detectCommitType(
     [

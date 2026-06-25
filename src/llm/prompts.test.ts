@@ -60,6 +60,44 @@ const normalState: SessionState = {
   previousValidation: null,
 };
 
+function contextWithConfidence(
+  confidence: ChangeClassification["confidence"],
+): StagedContext {
+  const ctx = makeContext("+small change");
+  ctx.classification = { ...makeClassification(), confidence, type: "fix" };
+  return ctx;
+}
+
+test("buildPrompt: P2-T4 — a high-confidence type hint is asserted firmly", () => {
+  const prompt = buildPrompt(
+    contextWithConfidence("high"),
+    normalState,
+    "",
+    makeConfig(),
+    false,
+  );
+  expect(prompt.user).toContain("this appears to be a 'fix' commit");
+});
+
+test("buildPrompt: P2-T4 — a weak type hint is hedged toward the diff", () => {
+  for (const confidence of ["medium", "low"] as const) {
+    const prompt = buildPrompt(
+      contextWithConfidence(confidence),
+      normalState,
+      "",
+      makeConfig(),
+      false,
+    );
+    expect(prompt.user, confidence).not.toContain(
+      "this appears to be a 'fix' commit",
+    );
+    expect(prompt.user, confidence).toContain(
+      "decide the type primarily from the diff",
+    );
+    expect(prompt.user, confidence).toContain(confidence);
+  }
+});
+
 test("buildPrompt: a diff under the limit is not marked truncated", () => {
   const prompt = buildPrompt(
     makeContext("+small change"),

@@ -162,6 +162,15 @@ Use this as the primary context and ensure your commit message reflects these po
     }
   }
 
+  // P2-T4: the type vote is only a prior. When file signals are weak (medium/low
+  // confidence) a firm "this is a 'X' commit" anchors the model on a shaky guess,
+  // so hedge the wording and point it at the diff; keep the firm hint only when
+  // the vote is strong (high). Scope stays firm — it's path-derived, not vote-derived.
+  const typeHint =
+    classification.confidence === "high"
+      ? `Based on file analysis, this appears to be a '${classification.type}' commit.`
+      : `File signals are ${classification.confidence === "low" ? "weak" : "mixed"} (${classification.confidence} confidence) — decide the type primarily from the diff itself. A tentative guess is '${classification.type}', but do not anchor on it.`;
+
   userMessage += `
 ${DIVIDER}
 PRE-ANALYSIS HINTS:
@@ -169,7 +178,7 @@ ${DIVIDER}
 ${
   initialCommit
     ? "Initial commit — describe the project as a whole. Ignore file-level type/scope hints."
-    : `Based on file analysis, this appears to be a '${classification.type}' commit.
+    : `${typeHint}
 Suggested scope: ${classification.scope}
 ${classification.secondaryScopes.length > 0 ? `Also affects: ${classification.secondaryScopes.join(", ")}\n` : ""}
 Use these hints to guide your commit message, but adjust if the actual changes suggest otherwise.`

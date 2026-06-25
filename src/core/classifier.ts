@@ -232,11 +232,27 @@ export function detectCommitType(
   // 2b: scan only added (`+`) lines, with word boundaries — so context lines,
   // removed code, and identifiers like `cachedEncoder` don't cast spurious
   // votes (substring `cache` over the whole diff used to fake a perf signal).
-  const addedText = diff
-    .split("\n")
-    .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
-    .join("\n")
-    .toLowerCase();
+  //
+  // Scope the scan to *behavioral* code: skip lines inside test files (a fixture
+  // like `throw new Error('overdrawn')` is not a bug fix) and comment lines (a
+  // `// optimize later` is not a perf change). Both were observed casting wrong
+  // votes — a co-changed test file made real features read as `fix`.
+  const categoryByPath = new Map(files.map((f) => [f.path, f.category]));
+  let currentCategory: FileCategory | undefined;
+  const codeLines: string[] = [];
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git")) {
+      const match = line.match(/diff --git (?:a\/)?(\S+)/);
+      currentCategory = match ? categoryByPath.get(match[1]) : undefined;
+      continue;
+    }
+    if (currentCategory === "test") continue;
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    const content = line.slice(1).trim();
+    if (/^(\/\/|\/\*|\*|#)/.test(content)) continue;
+    codeLines.push(content);
+  }
+  const addedText = codeLines.join("\n").toLowerCase();
 
   if (/\b(?:error|catch)\b/.test(addedText) || /\btry\s*\{/.test(addedText)) {
     scores.fix += 2;
