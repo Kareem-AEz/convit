@@ -12,6 +12,7 @@
 import {
   COMPRESSION_THRESHOLD,
   GENERATED_PATTERNS,
+  LANGUAGE_DECLARATION_PATTERNS,
   SOURCE_EXTENSIONS,
 } from "../config/defaults";
 import type {
@@ -194,65 +195,110 @@ export function detectBinaryFiles(diff: string): Set<string> {
 }
 
 /**
+ * Filters out added lines that are non-semantic noise when they reach the
+ * fallback "logic" bucket: comment lines (`//`, `/*`, JSDoc `*` continuations,
+ * `#`) carry intent but not changed behavior, and a bare `identifier,` is almost
+ * always a member of a multi-line `import { … }` / enum / array — both would
+ * otherwise crowd the real changed line out of the reserved logic slots.
+ * TODO/FIXME comments are unaffected — they are caught earlier as declarations.
+ */
+function isLowSignalLine(content: string): boolean {
+  return /^(\/\/|\/\*|\*|#)/.test(content) || /^[\w$]+,?$/.test(content);
+}
+
+/** Picks the declaration-pattern set for a file, keyed by extension. */
+function declarationPatternsFor(filePath?: string): RegExp[] {
+  if (!filePath) return LANGUAGE_DECLARATION_PATTERNS.default;
+  const ext = filePath.substring(filePath.lastIndexOf("."));
+  return LANGUAGE_DECLARATION_PATTERNS[ext] ?? LANGUAGE_DECLARATION_PATTERNS.default;
+}
+
+/**
+ * Pulls the section context git attaches to each hunk header
+ * (`@@ -a,b +c,d @@ <context>`) — the enclosing function/class signature git
+ * already computed for free. Deduped (a function with several touched hunks
+ * appears once), import-context dropped as low-signal, capped to stay compact.
+ *
+ * This names *which region* every concern in a wide diff lives in, so a heavily
+ * compressed summary keeps a trace of each change even when key-change extraction
+ * surfaces only a handful of declarations.
+ */
+export function extractHunkContexts(
+  fileDiff: string,
+  maxContexts: number = 8,
+): string[] {
+  const contexts: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of fileDiff.split("\n")) {
+    if (contexts.length >= maxContexts) break;
+    const match = line.match(/^@@ .*? @@\s?(.+)$/);
+    if (!match) continue;
+
+    const ctx = match[1].trim();
+    if (!ctx || ctx.startsWith("import ") || ctx.startsWith("from ")) continue;
+    if (seen.has(ctx)) continue;
+
+    seen.add(ctx);
+    contexts.push(ctx.substring(0, 80));
+  }
+
+  return contexts;
+}
+
+/**
  * Extracts the most semantically meaningful added lines from a file's diff.
  *
- * Two-phase strategy:
+ * Single pass buckets each added line into:
+ *   - **declarations** — high-signal structural lines matched by the language's
+ *     declaration patterns (function/class/const/type for JS/TS; `def`/`class`
+ *     for Python; etc.) plus TODO/FIXME intent markers. Imports are skipped.
+ *   - **logic** — other substantial (≥20 char) added lines, i.e. the actual
+ *     changed behavior (a bug-fix line is rarely a declaration).
  *
- * Phase 1 — AST-lite pattern matching:
- *   Scans added lines for high-signal declarations using lightweight regexes:
- *   - Function declarations, class declarations, constants, types/interfaces
- *   - TODO/FIXME annotations (explicit developer intent)
- *   Import statements are explicitly skipped — they carry minimal semantic signal.
- *
- * Phase 2 — Fallback:
- *   If Phase 1 yields nothing, fall back to the first N non-trivial added lines
- *   (≥20 chars) as a best-effort summary.
+ * Assembly *reserves slots for logic* so re-added declarations can't crowd it
+ * out: on a wide refactor a file's diff re-adds many `export const`/`export
+ * function` lines, which previously filled every slot and left the model
+ * describing declaration names while the real change stayed invisible. We cap
+ * declarations to leave room (up to 2) for logic lines whenever any exist.
  */
 export function extractKeyChanges(
   fileDiff: string,
   maxChanges: number = 5,
+  filePath?: string,
 ): string[] {
-  const keyChanges: string[] = [];
-  const lines = fileDiff.split("\n");
+  const declPatterns = declarationPatternsFor(filePath);
+  const declarations: string[] = [];
+  const logic: string[] = [];
 
-  for (const line of lines) {
-    if (keyChanges.length >= maxChanges) break;
+  for (const line of fileDiff.split("\n")) {
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
 
     const content = line.substring(1).trim();
     if (!content || content.length < 10) continue;
     if (content.startsWith("import ") || content.startsWith("from ")) continue;
 
-    const isFunctionDeclaration = /^(export\s+)?(async\s+)?function\s+\w+/.test(
-      content,
-    );
-    const isClassDeclaration = /^(export\s+)?class\s+\w+/.test(content);
-    const isConstantDeclaration = /^(export\s+)?const\s+\w+/.test(content);
-    const isTypeDeclaration = /^(export\s+)?(type|interface)\s+\w+/.test(
-      content,
-    );
+    // TODO/FIXME only count as intent markers in annotation form (`TODO:`,
+    // `FIXME(user)`) — a bare substring also fires on prose that merely mentions
+    // the words (a JSDoc line, a changelog entry), mislabeling it high-signal.
+    const isDeclaration =
+      declPatterns.some((re) => re.test(content)) ||
+      /\b(TODO|FIXME)[:(]/.test(content);
 
-    if (
-      isFunctionDeclaration ||
-      isClassDeclaration ||
-      isConstantDeclaration ||
-      isTypeDeclaration
-    ) {
-      keyChanges.push(content.substring(0, 100));
-    } else if (content.includes("TODO") || content.includes("FIXME")) {
-      keyChanges.push(content.substring(0, 100));
+    if (isDeclaration) {
+      declarations.push(content.substring(0, 100));
+    } else if (content.length >= 20 && !isLowSignalLine(content)) {
+      logic.push(content.substring(0, 80));
     }
   }
 
-  if (keyChanges.length === 0) {
-    for (const line of lines) {
-      if (keyChanges.length >= 3) break;
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        const content = line.substring(1).trim();
-        if (content && content.length >= 20)
-          keyChanges.push(content.substring(0, 80));
-      }
-    }
+  const reservedForLogic = Math.min(logic.length, 2);
+  const declSlots = Math.max(0, maxChanges - reservedForLogic);
+
+  const keyChanges = declarations.slice(0, declSlots);
+  for (const line of logic) {
+    if (keyChanges.length >= maxChanges) break;
+    keyChanges.push(line);
   }
 
   return keyChanges;
@@ -356,8 +402,11 @@ export function analyzeDiff(
       (changeType === "add" || changeType === "modify");
 
     const fileDiff = section?.text ?? "";
-    const keyChanges =
-      isBinary || formattingOnly ? [] : extractKeyChanges(fileDiff);
+    const skipExtraction = isBinary || formattingOnly;
+    const keyChanges = skipExtraction
+      ? []
+      : extractKeyChanges(fileDiff, 5, file);
+    const hunkContexts = skipExtraction ? [] : extractHunkContexts(fileDiff);
 
     fileSummaries.push({
       path: file,
@@ -368,6 +417,7 @@ export function analyzeDiff(
       isBinary,
       importanceScore: 0,
       keyChanges,
+      hunkContexts,
       formattingOnly,
       ...(section?.oldPath ? { oldPath: section.oldPath } : {}),
     });
@@ -429,6 +479,15 @@ export function formatCompressedDiff(summary: DiffSummary): string {
         file.keyChanges.forEach((change) => {
           output += `  • ${change}\n`;
         });
+        // Touched regions git named on the hunk headers — drop any already shown
+        // as a key change so a re-added declaration isn't echoed twice.
+        const regions = file.hunkContexts.filter(
+          (ctx) =>
+            !file.keyChanges.some((k) => k.includes(ctx) || ctx.includes(k)),
+        );
+        if (regions.length > 0) {
+          output += `  ↳ regions: ${regions.join("; ")}\n`;
+        }
       }
       output += "\n";
     }

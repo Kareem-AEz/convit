@@ -80,6 +80,43 @@ export const SOURCE_EXTENSIONS = [
   ".swift",
 ];
 
+/**
+ * Per-language declaration patterns for key-change extraction, keyed by file
+ * extension. Matched against an added line's trimmed content to decide whether
+ * it is a high-signal declaration worth surfacing in the compressed summary.
+ *
+ * Only JS/TS declarations were recognized before, so a Python/Go/Rust/Java/C#
+ * diff surfaced nothing structural. Extensions in `SOURCE_EXTENSIONS` but absent
+ * here fall back to `default` (the JS/TS set).
+ */
+const JS_TS_DECLARATIONS = [
+  /^(export\s+)?(async\s+)?function\s+\w+/,
+  /^(export\s+)?class\s+\w+/,
+  /^(export\s+)?const\s+\w+/,
+  /^(export\s+)?(type|interface)\s+\w+/,
+];
+
+export const LANGUAGE_DECLARATION_PATTERNS: Record<string, RegExp[]> = {
+  default: JS_TS_DECLARATIONS,
+  ".ts": JS_TS_DECLARATIONS,
+  ".tsx": JS_TS_DECLARATIONS,
+  ".js": JS_TS_DECLARATIONS,
+  ".jsx": JS_TS_DECLARATIONS,
+  ".mjs": JS_TS_DECLARATIONS,
+  ".cjs": JS_TS_DECLARATIONS,
+  ".py": [/^(async\s+)?def\s+\w+/, /^class\s+\w+/],
+  ".go": [/^func\s+/, /^type\s+\w+/],
+  ".rs": [
+    /^(pub\s+)?(async\s+)?fn\s+\w+/,
+    /^(pub\s+)?(unsafe\s+)?(struct|enum|trait|impl|mod)\b/,
+  ],
+  ".java": [/^(public|private|protected)\b/, /\b(class|interface|enum|record)\s+\w+/],
+  ".cs": [
+    /^(public|private|protected|internal)\b/,
+    /\b(class|interface|enum|record|struct)\s+\w+/,
+  ],
+};
+
 export const GENERATED_PATTERNS = [
   /package-lock\.json$/,
   /pnpm-lock\.yaml$/,

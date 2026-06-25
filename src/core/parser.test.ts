@@ -5,7 +5,9 @@ import {
   calculateImportanceScore,
   categorizeFile,
   detectBinaryFiles,
+  extractHunkContexts,
   extractKeyChanges,
+  formatCompressedDiff,
   parseDiffStats,
   summarizeDiff,
 } from "./parser";
@@ -126,6 +128,131 @@ test("extractKeyChanges falls back to substantial added lines", () => {
     "+this is a sufficiently long added line of prose",
   ].join("\n");
   expect(extractKeyChanges(fileDiff)).toHaveLength(1);
+});
+
+test("extractKeyChanges reserves slots so logic survives a declaration-heavy diff", () => {
+  // P2-T3: a wide refactor re-adds many declarations; the changed logic line
+  // must still surface instead of being crowded out of all 5 slots.
+  const fileDiff = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "+export const A = 1;",
+    "+export const B = 2;",
+    "+export const C = 3;",
+    "+export const D = 4;",
+    "+export const E = 5;",
+    "+  if (balance < 0) throw new Error('overdrawn account');",
+  ].join("\n");
+  const changes = extractKeyChanges(fileDiff, 5, "src/x.ts");
+  expect(changes).toHaveLength(5);
+  expect(
+    changes.some((c) => c.includes("balance < 0")),
+    "the non-declaration logic line should occupy a reserved slot",
+  ).toBe(true);
+});
+
+test("extractKeyChanges keeps comments and import members out of logic slots", () => {
+  // Observed in a dogfood run: JSDoc/comment lines and multi-line import members
+  // were surfaced as "logic", crowding out the one real changed line.
+  const fileDiff = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "+import {",
+    "+  extractHunkContexts,",
+    "+  formatCompressedDiff,",
+    "+/** Picks the declaration set for a file, keyed by extension. */",
+    "+ * enclosing function/class the hunk touches — one signal per region,",
+    "+  hunkContexts: string[];",
+    "+  return amount * taxRate + shippingFee;",
+  ].join("\n");
+  const changes = extractKeyChanges(fileDiff, 5, "src/x.ts");
+  expect(changes).toContain("return amount * taxRate + shippingFee;");
+  expect(changes).toContain("hunkContexts: string[];");
+  expect(changes.some((c) => c.startsWith("*") || c.startsWith("/*"))).toBe(
+    false,
+  );
+  expect(changes).not.toContain("extractHunkContexts,");
+});
+
+test("extractKeyChanges treats TODO/FIXME as intent only in annotation form", () => {
+  const real = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "+  // TODO: handle the retry path",
+  ].join("\n");
+  expect(extractKeyChanges(real, 5, "src/x.ts")).toContain(
+    "// TODO: handle the retry path",
+  );
+
+  // Prose that merely mentions the words is not a real annotation and, being a
+  // comment, must be dropped rather than surfaced as a high-signal change.
+  const prose = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "+ * TODO/FIXME comments are unaffected by this change.",
+  ].join("\n");
+  expect(extractKeyChanges(prose, 5, "src/x.ts")).toEqual([]);
+});
+
+test("extractKeyChanges recognizes declarations per language", () => {
+  const cases: Array<[string, string, string]> = [
+    ["src/m.py", "+def handler(req):", "def handler(req):"],
+    ["src/m.py", "+class Widget:", "class Widget:"],
+    ["src/m.go", "+func Serve(w http.ResponseWriter) {", "func Serve"],
+    ["src/m.rs", "+pub fn parse(input: &str) -> Result<T> {", "pub fn parse"],
+    ["src/M.java", "+public void process() {", "public void process"],
+  ];
+  for (const [path, added, needle] of cases) {
+    const fileDiff = ["diff --git a b", "+++ b", added].join("\n");
+    const changes = extractKeyChanges(fileDiff, 5, path);
+    expect(changes.some((c) => c.includes(needle)), `${path}: ${added}`).toBe(
+      true,
+    );
+  }
+});
+
+test("extractHunkContexts surfaces the enclosing region, deduped, imports dropped", () => {
+  const fileDiff = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "@@ -47,6 +47,7 @@ import type { Foo } from './foo';",
+    "+a();",
+    "@@ -80,8 +81,9 @@ async function getStagedContext(config) {",
+    "+b();",
+    "@@ -90,2 +92,3 @@ async function getStagedContext(config) {",
+    "+c();",
+  ].join("\n");
+  const contexts = extractHunkContexts(fileDiff);
+  expect(contexts).toContain("async function getStagedContext(config) {");
+  expect(contexts).toHaveLength(1); // import context dropped, duplicate collapsed
+});
+
+test("P2-T3 — a non-declaration logic change surfaces in the compressed summary", () => {
+  // The acceptance: a large fix whose change is a logic line (not a declaration)
+  // still leaves a trace — both the line itself and its hunk region.
+  const fileDiff = [
+    "diff --git src/pay.ts src/pay.ts",
+    "--- src/pay.ts",
+    "+++ src/pay.ts",
+    "@@ -10,3 +10,4 @@ export function processPayment(amount) {",
+    "   const fee = amount * 0.03;",
+    "+  if (amount < 0) throw new RangeError('negative amount rejected');",
+  ].join("\n");
+  const summary = analyzeDiff(fileDiff, ["src/pay.ts"]);
+  const out = formatCompressedDiff(summary);
+  expect(out).toContain("amount < 0");
+  expect(out).toContain("processPayment");
+});
+
+test("analyzeDiff — a formatting-only file carries no hunk regions", () => {
+  const diff = [
+    "diff --git src/a.ts src/a.ts",
+    "--- src/a.ts",
+    "+++ src/a.ts",
+    "@@ -1,1 +1,1 @@ export function f() {",
+    "+export const RATE = 5;",
+  ].join("\n");
+  const { files } = analyzeDiff(diff, ["src/a.ts"], new Set(["src/a.ts"]));
+  expect(files[0].hunkContexts).toEqual([]);
 });
 
 test("analyzeDiff: 2c — an addition-only hunk in an existing file is `modify`", () => {

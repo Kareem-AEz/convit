@@ -27,6 +27,13 @@ export interface FileSummary {
   importanceScore: number;
   keyChanges: string[];
   /**
+   * Section context git emits on each hunk header (`@@ … @@ <here>`), naming the
+   * enclosing function/class the hunk touches — one signal per changed region,
+   * deduped. Presentation-only: surfaced in the compressed summary so a wide diff
+   * keeps a trace of every concern, but never fed to the classifier's votes.
+   */
+  hunkContexts: string[];
+  /**
    * True when the file's only changes are whitespace/formatting (a prettier/
    * eslint --fix run). Derived by comparing a normal numstat against one taken
    * with `-w --ignore-blank-lines`: real changes in the first but `0 0` in the
