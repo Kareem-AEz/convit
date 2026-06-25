@@ -22,6 +22,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     noCompress: false,
     accept: false,
     debug: false,
+    structured: true,
     timeoutMs: 60_000,
     exclude: [],
     userConfig: makeUserConfig(userConfig),

@@ -283,6 +283,11 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     baseURL: config.apiUrl,
     apiKey: config.apiKey,
     includeUsage: true,
+    // Send strict `response_format: json_schema` (not loose `json_object`) when a
+    // schema is attached, so structured generation works on endpoints that only
+    // accept the strict form. Only affects schema-bearing calls; the free-text
+    // path is untouched, and unsupported endpoints fall back to it.
+    supportsStructuredOutputs: true,
   });
 
   const modelName = await getLoadedModel(config);

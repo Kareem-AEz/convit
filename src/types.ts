@@ -186,6 +186,13 @@ export interface Config {
   noCompress: boolean;
   accept: boolean;
   debug: boolean;
+  /**
+   * Prefer schema-constrained generation (the model emits a validated
+   * `{type, scope, subject, body}` object) over free-text parsing. Defaults to
+   * true; `--no-structured` forces the free-text path. When the endpoint rejects
+   * structured output, convit falls back to free-text automatically.
+   */
+  structured: boolean;
   timeoutMs: number;
   userConfig: UserConfig;
   exclude: string[];

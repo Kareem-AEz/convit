@@ -1,6 +1,89 @@
 import { test, expect } from "vitest";
 
-import { cleanCommitMessage, formatApiError } from "./generator";
+import {
+  assembleCommitMessage,
+  cleanCommitMessage,
+  formatApiError,
+  shouldFallbackToFreeText,
+} from "./generator";
+import { HEADER_RE } from "../types";
+
+const baseStructured = {
+  type: "feat",
+  scope: "core",
+  breaking: false,
+  subject: "add structured generation",
+  body: ["emit a validated commit object", "fall back to free-text"],
+};
+
+test("assembleCommitMessage builds a HEADER_RE-valid header and bullets", () => {
+  const msg = assembleCommitMessage(baseStructured);
+  const lines = msg.split("\n");
+  expect(lines[0]).toBe("feat(core): add structured generation");
+  expect(HEADER_RE.test(lines[0])).toBe(true);
+  expect(lines[1]).toBe(""); // blank line between subject and body
+  expect(lines[2]).toBe("- emit a validated commit object");
+  expect(lines[3]).toBe("- fall back to free-text");
+});
+
+test("assembleCommitMessage drops a null/invalid scope and keeps the header valid", () => {
+  const noScope = assembleCommitMessage({ ...baseStructured, scope: null });
+  expect(noScope.split("\n")[0]).toBe("feat: add structured generation");
+  expect(HEADER_RE.test(noScope.split("\n")[0])).toBe(true);
+
+  // A scope outside the header grammar (spaces/slashes) is dropped, not emitted
+  // into an invalid `feat(a b): …` header.
+  const bad = assembleCommitMessage({ ...baseStructured, scope: "a b/c" });
+  expect(bad.split("\n")[0]).toBe("feat: add structured generation");
+});
+
+test("assembleCommitMessage lowercases the scope and marks breaking changes", () => {
+  const msg = assembleCommitMessage({
+    ...baseStructured,
+    scope: "CLI",
+    breaking: true,
+  });
+  expect(msg.split("\n")[0]).toBe("feat(cli)!: add structured generation");
+  expect(HEADER_RE.test(msg.split("\n")[0])).toBe(true);
+});
+
+test("assembleCommitMessage strips stray bullet markers and empty bullets", () => {
+  const msg = assembleCommitMessage({
+    ...baseStructured,
+    body: ["- already dashed", "* star marker", "   ", "clean"],
+  });
+  expect(msg.split("\n").slice(2)).toEqual([
+    "- already dashed",
+    "- star marker",
+    "- clean",
+  ]);
+});
+
+test("assembleCommitMessage emits a header-only message when body is empty", () => {
+  const msg = assembleCommitMessage({ ...baseStructured, body: [] });
+  expect(msg).toBe("feat(core): add structured generation");
+});
+
+test("assembleCommitMessage throws when type or subject is empty", () => {
+  expect(() => assembleCommitMessage({ ...baseStructured, subject: "  " })).toThrow();
+  expect(() => assembleCommitMessage({ ...baseStructured, type: "" })).toThrow();
+});
+
+test("an unusable structured result routes to the free-text fallback", () => {
+  // The assembly error (empty subject) must signal fallback, not a hard fail —
+  // the endpoint works, the model just returned junk.
+  let caught: unknown;
+  try {
+    assembleCommitMessage({ ...baseStructured, subject: "" });
+  } catch (e) {
+    caught = e;
+  }
+  expect(shouldFallbackToFreeText(caught)).toBe(true);
+});
+
+test("an unrelated error does not trigger the free-text fallback", () => {
+  expect(shouldFallbackToFreeText(new Error("connection reset"))).toBe(false);
+});
 
 test("strips a fenced code block wrapper", () => {
   const raw = "```\nfeat(api): add login\n```";

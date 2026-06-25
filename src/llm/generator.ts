@@ -9,11 +9,67 @@
 // - Raw output cleaning (code blocks, quotes, preamble stripping)
 // =============================================================================
 
-import { type LanguageModel, streamText } from "ai";
+import {
+  APICallError,
+  generateText,
+  jsonSchema,
+  NoObjectGeneratedError,
+  Output,
+  streamText,
+  type LanguageModel,
+} from "ai";
 import { BRAILLE_SPINNER_FRAMES, pc, spinner } from "../cli/ui";
 import { validateCommitMessage } from "../core/validator";
-import { HEADER_RE } from "../types";
+import { COMMIT_TYPES, HEADER_RE } from "../types";
 import type { BuiltPrompt, Config, GenerateResult } from "../types";
+
+/** The validated shape the model returns in structured mode. */
+interface StructuredCommit {
+  type: string;
+  scope: string | null;
+  breaking: boolean;
+  subject: string;
+  body: string[];
+}
+
+/**
+ * Conventional-commit JSON Schema for structured generation. Field descriptions
+ * carry the content/tone rules (the same ones in the prompt) so the model fills
+ * each field correctly; structural rules (the `type(scope): subject` shape) are
+ * enforced by the schema itself, not regex-cleaned out of free text afterward.
+ */
+const COMMIT_SCHEMA = jsonSchema<StructuredCommit>({
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "scope", "breaking", "subject", "body"],
+  properties: {
+    type: {
+      type: "string",
+      enum: [...COMMIT_TYPES],
+      description: "The conventional-commit type that best fits the change.",
+    },
+    scope: {
+      type: ["string", "null"],
+      description:
+        "A short, lowercase scope naming the area changed (no spaces), or null if none clearly applies.",
+    },
+    breaking: {
+      type: "boolean",
+      description: "True only when the change breaks backward compatibility.",
+    },
+    subject: {
+      type: "string",
+      description:
+        "Imperative, lowercase, no trailing period, ≤50 chars. States what changed.",
+    },
+    body: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "One or more concise bullets (no leading dash), each ≤72 chars, favoring why over what.",
+    },
+  },
+});
 
 /**
  * Cleans raw AI output into a valid, well-formatted commit message.
@@ -129,6 +185,157 @@ export function formatApiError(
 }
 
 /**
+ * A structured result that can't be turned into a usable commit message (e.g. an
+ * empty subject). Signals `generateCommit` to fall back to free-text rather than
+ * hard-fail the commit — the endpoint works, the model just returned junk.
+ */
+class UnusableStructuredOutput extends Error {}
+
+/**
+ * Assembles a structured commit object into the canonical message string.
+ *
+ * The result must satisfy `HEADER_RE`/`validateCommitMessage`, so this is where
+ * subtle format bugs hide (missing blank line, `!` placement, an out-of-grammar
+ * scope). The scope is lowercased and sanitized to the header grammar — dropped
+ * if it can't be made valid — and an empty type/subject is a generation failure.
+ */
+export function assembleCommitMessage(output: StructuredCommit): string {
+  const type = output.type.trim();
+  const subject = output.subject.trim();
+  if (!type || !subject) {
+    throw new UnusableStructuredOutput(
+      "Structured output missing a type or subject.",
+    );
+  }
+
+  const rawScope = (output.scope ?? "").trim().toLowerCase();
+  const scope = /^[a-z0-9-]+$/.test(rawScope) ? rawScope : "";
+  const breaking = output.breaking ? "!" : "";
+  const header = `${type}${scope ? `(${scope})` : ""}${breaking}: ${subject}`;
+
+  const bullets = (output.body ?? [])
+    .map((b) => b.trim().replace(/^[-*]\s*/, "")) // strip any leading marker
+    .filter(Boolean)
+    .map((b) => `- ${b}`);
+
+  return bullets.length > 0 ? `${header}\n\n${bullets.join("\n")}` : header;
+}
+
+/**
+ * True when a structured-generation error should drop to the free-text path:
+ * the endpoint can't do schema-constrained output (rejects `response_format`),
+ * the model returned no parseable object, or the object was unusable. Other
+ * errors (timeout, network) propagate to the caller's recoverable handler.
+ */
+export function shouldFallbackToFreeText(err: unknown): boolean {
+  if (err instanceof UnusableStructuredOutput) return true;
+  if (NoObjectGeneratedError.isInstance(err)) return true;
+  if (APICallError.isInstance(err)) {
+    const haystack = `${err.message} ${String(err.responseBody ?? "")}`;
+    // Targeted to structured-output rejections — a bare `schema` would match
+    // unrelated 400s and silently mask a real error. The real gateway rejection
+    // matched on `response_format` (verified), so precise terms suffice.
+    return (
+      err.statusCode === 400 &&
+      /response_format|json[_-]?schema|structured output|not support/i.test(
+        haystack,
+      )
+    );
+  }
+  return false;
+}
+
+/**
+ * Schema-constrained generation: the model returns a validated
+ * `{type, scope, subject, body}` object, which is assembled into the message.
+ * No regex cleanup — the structure is guaranteed by the schema. Throws on an
+ * unsupported endpoint (caught by `generateCommit`, which then falls back).
+ */
+async function generateStructured(
+  model: LanguageModel,
+  prompt: BuiltPrompt,
+  config: Config,
+): Promise<GenerateResult> {
+  const startTime = Date.now();
+  const spin = spinner({ frames: BRAILLE_SPINNER_FRAMES, delay: 80 });
+  spin.start("Generating");
+  const timer = setInterval(() => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    spin.message(`Generating · ${elapsed}s`);
+  }, 1000);
+
+  let output: StructuredCommit;
+  let usageData;
+  try {
+    const gen = await generateText({
+      model,
+      system: prompt.system,
+      messages: [{ role: "user", content: prompt.user }],
+      temperature: prompt.temperature,
+      output: Output.object({ schema: COMMIT_SCHEMA }),
+      abortSignal: AbortSignal.timeout(config.timeoutMs),
+    });
+    output = gen.output;
+    usageData = gen.usage;
+  } finally {
+    clearInterval(timer);
+    spin.stop();
+  }
+
+  const message = assembleCommitMessage(output);
+  console.log("\n" + pc.dim("─".repeat(60)));
+  console.log(pc.bold(message));
+  console.log("\n" + pc.dim("─".repeat(60)));
+
+  const validation = validateCommitMessage(message, config);
+  const tokensFromApi = !!usageData && (usageData.totalTokens ?? 0) > 0;
+
+  return {
+    message,
+    validation,
+    inputTokens: tokensFromApi
+      ? (usageData.inputTokens ?? 0)
+      : prompt.estimatedInputTokens,
+    outputTokens: tokensFromApi
+      ? (usageData.outputTokens ?? 0)
+      : Math.ceil(message.length / 4),
+    durationMs: Date.now() - startTime,
+    tokensFromApi,
+    wasTruncated: false,
+  };
+}
+
+/**
+ * Generates a commit message, preferring schema-constrained output when enabled
+ * (`config.structured`, the default). If the structured attempt can't yield a
+ * usable message — unsupported endpoint, unparseable, or empty fields — it falls
+ * back to the free-text path. Any other error (timeout, network) is reformatted
+ * through `formatApiError` so the caller surfaces the same actionable guidance
+ * the free-text path gives.
+ */
+export async function generateCommit(
+  model: LanguageModel,
+  prompt: BuiltPrompt,
+  modelName: string,
+  config: Config,
+): Promise<GenerateResult> {
+  if (config.structured) {
+    try {
+      return await generateStructured(model, prompt, config);
+    } catch (err) {
+      if (shouldFallbackToFreeText(err)) {
+        console.log(
+          pc.dim("\nCouldn't use structured output — using free-text."),
+        );
+        return generateFreeText(model, prompt, modelName, config);
+      }
+      throw new Error(formatApiError(err, modelName, config.timeoutMs / 1000));
+    }
+  }
+  return generateFreeText(model, prompt, modelName, config);
+}
+
+/**
  * Streams a commit message from the AI model and returns the cleaned, validated result.
  *
  * Streaming design:
@@ -143,7 +350,7 @@ export function formatApiError(
  * Token counting:
  * Uses API-reported usage when available, falls back to length/4 estimation.
  */
-export async function generateCommit(
+async function generateFreeText(
   model: LanguageModel,
   prompt: BuiltPrompt,
   modelName: string,

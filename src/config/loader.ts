@@ -27,6 +27,7 @@ export function getConfig(): Config {
   const noCompress = args.includes("--no-compress");
   const accept = args.includes("--accept");
   const debug = args.includes("--debug");
+  const structured = !args.includes("--no-structured");
 
   const modelIdx = args.indexOf("--model");
   const cliModelOverride =
@@ -55,6 +56,7 @@ export function getConfig(): Config {
     noCompress,
     accept,
     debug,
+    structured,
     timeoutMs:
       parseInt(process.env.CONVIT_TIMEOUT ?? "", 10) ||
       userConfig.rules?.timeout ||
