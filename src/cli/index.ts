@@ -34,7 +34,8 @@ import { evaluateAutoAcceptGate, evaluateSensitiveAcceptGate } from "./gates";
 import { classifyChanges } from "../core/classifier";
 import { analyzeDiff, summarizeDiff } from "../core/parser";
 import {
-  detectSensitiveData,
+  collectPromptSecrets,
+  detectSensitiveInText,
   promptForSensitiveConfirmation,
 } from "../core/security";
 import { generateCommit } from "../llm/generator";
@@ -64,12 +65,16 @@ import {
  * 2. `git diff --cached --unified=3` — full diff with 3 lines of context
  * 3. `analyzeDiff` → per-file summaries with importance scoring
  * 4. `classifyChanges` → commit type + scope hints for the AI
- * 5. `detectSensitiveData` → security scan before any API call
+ * 5. `collectPromptSecrets` → scan every static prompt source (diff, file paths,
+ *    recent commits) before any API call
  * 6. `summarizeDiff` → compress if large, pass through if small
  *
  * @throws Error if no files are staged
  */
-async function getStagedContext(config: Config): Promise<StagedContext> {
+async function getStagedContext(
+  config: Config,
+  recentCommits: string,
+): Promise<StagedContext> {
   const stagedFiles = getStagedFiles(config.exclude);
 
   if (!stagedFiles) {
@@ -85,7 +90,9 @@ async function getStagedContext(config: Config): Promise<StagedContext> {
 
   const diffSummary = analyzeDiff(rawDiff, fileList, formattingOnlyFiles);
   const classification = classifyChanges(diffSummary.files, rawDiff, config);
-  const sensitiveMatches = detectSensitiveData(rawDiff);
+  // Scan the diff plus the other repo-derived text that reaches the model: file
+  // paths and recent commit bodies. The typed description is gated in-loop.
+  const sensitiveMatches = collectPromptSecrets(rawDiff, fileList, recentCommits);
   const { processedDiff, wasCompressed } = summarizeDiff(
     rawDiff,
     diffSummary,
@@ -300,7 +307,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   // -- INITIAL CONTEXT --
   let context: StagedContext;
   try {
-    context = await getStagedContext(config);
+    context = await getStagedContext(config, recentCommits);
   } catch (err) {
     cancel(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -367,6 +374,11 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     previousOutput: null,
     previousValidation: null,
   };
+
+  // Tracks the last description we cleared through the secret gate, so a plain
+  // regenerate (same description) doesn't re-prompt — only freshly typed text
+  // (initial or edit feedback) is re-scanned.
+  let lastScannedDescription = "";
 
   // -- MAIN LOOP --
   while (true) {
@@ -435,6 +447,32 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     }
     console.log(pc.dim("  " + metaParts.join(" · ")));
 
+    // -- DESCRIPTION SECRET GATE --
+    // The typed description (and edit feedback) reaches the model too, but it's
+    // collected/changed inside this loop — after the static gate. Scan it here,
+    // before generation, and only when it's new (avoids re-prompting on plain
+    // regenerate). Fails closed under --accept, exactly like the static gate.
+    const description = state.userDescription?.trim();
+    if (description && description !== lastScannedDescription) {
+      const descMatches = detectSensitiveInText(description, "your description");
+      if (descMatches.length > 0) {
+        const gate = evaluateSensitiveAcceptGate(config.accept, descMatches);
+        if (!gate.ok) {
+          cancel(gate.reason);
+          process.exit(gate.code);
+        }
+        const confirmed = await promptForSensitiveConfirmation(
+          descMatches,
+          config.apiUrl,
+        );
+        if (!confirmed) {
+          cancel("Cancelled — sensitive data detected");
+          return;
+        }
+      }
+      lastScannedDescription = description;
+    }
+
     // -- GENERATE (errors are recoverable) --
     let result: GenerateResult;
     try {
@@ -457,7 +495,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         return;
       }
       try {
-        context = await getStagedContext(config);
+        context = await getStagedContext(config, recentCommits);
       } catch {
         // keep existing context if refresh fails
       }
@@ -616,7 +654,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         : "Applying corrections...";
       console.log(pc.cyan(`\n${retryMsg}\n`));
       try {
-        context = await getStagedContext(config);
+        context = await getStagedContext(config, recentCommits);
       } catch {
         // keep existing context
       }

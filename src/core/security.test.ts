@@ -1,6 +1,10 @@
 import { test, expect } from "vitest";
 
-import { detectSensitiveData } from "./security";
+import {
+  collectPromptSecrets,
+  detectSensitiveData,
+  detectSensitiveInText,
+} from "./security";
 
 function diffWith(addedLines: string[], file = "src/config.ts"): string {
   return [
@@ -104,4 +108,75 @@ test("does not match innocuous unquoted short values", () => {
   // source so the literal doesn't trip the scanner on this file's own diff.
   const lines = ["token=dev", "password=" + "short"];
   expect(detectSensitiveData(diffWith(lines, ".env"))).toEqual([]);
+});
+
+// --- P2-T6: scan all prompt-bound text, not just the diff --------------------
+
+test("detectSensitiveInText finds a secret in plain (non-diff) text", () => {
+  const ghp = "ghp_" + "a".repeat(36);
+  const matches = detectSensitiveInText(`token = ${ghp}`, "your description");
+  // `token = <ghp>` trips both the specific github_pat and the generic secret
+  // pattern (same as the diff scanner); the specific label wins position [0].
+  expect(matches[0]?.type).toBe("github_pat");
+});
+
+test("detectSensitiveInText labels the source via `file` and numbers lines 1-based", () => {
+  const ghp = "ghp_" + "b".repeat(36);
+  const text = ["first line", "second line", `leak: ${ghp}`].join("\n");
+  const [match] = detectSensitiveInText(text, "recent commit history");
+  expect(match.file).toBe("recent commit history");
+  expect(match.line).toBe(3);
+});
+
+test("detectSensitiveInText scans every line (no diff `+` prefix needed)", () => {
+  // The diff scanner only reads `+` lines; plain text has none, so this proves
+  // the non-diff path actually scans bare prose.
+  const akia = "AKIA" + "ABCD1234EFGH5678";
+  expect(detectSensitiveInText(`id = ${akia}`, "src").length).toBe(1);
+});
+
+test("detectSensitiveInText returns nothing for empty text", () => {
+  expect(detectSensitiveInText("", "src")).toEqual([]);
+  expect(detectSensitiveInText("just normal prose here", "src")).toEqual([]);
+});
+
+// Acceptance (P2-T6): a secret present ONLY in a recent commit body must reach
+// the match set the security gate checks — proving recentCommits is wired in,
+// not just that the primitive can detect a secret in isolation.
+test("collectPromptSecrets catches a secret that exists only in recent commits", () => {
+  const ghp = "ghp_" + "c".repeat(36);
+  const matches = collectPromptSecrets(
+    "diff --git a/x.ts b/x.ts\n+++ b/x.ts\n+const safe = 1;", // clean diff
+    ["src/x.ts"], // clean file list
+    `chore: rotate token\n\nold token was ${ghp}`, // secret only here
+  );
+  expect(matches.some((m) => m.type === "github_pat")).toBe(true);
+  expect(matches.some((m) => m.file === "recent commit history")).toBe(true);
+});
+
+test("collectPromptSecrets catches a secret hidden in a staged file path", () => {
+  const akia = "AKIA" + "ABCD1234EFGH5678";
+  const matches = collectPromptSecrets(
+    "diff --git a/x.ts b/x.ts\n+++ b/x.ts\n+const safe = 1;",
+    [`config/${akia}.env`],
+    "chore: routine commit",
+  );
+  expect(matches.some((m) => m.file === "staged file paths")).toBe(true);
+});
+
+test("collectPromptSecrets still surfaces diff secrets and stays clean when all sources are clean", () => {
+  const ghp = "ghp_" + "d".repeat(36);
+  const fromDiff = collectPromptSecrets(
+    diffWith([`token = ${ghp}`]),
+    ["src/config.ts"],
+    "chore: routine",
+  );
+  expect(fromDiff.some((m) => m.type === "github_pat")).toBe(true);
+
+  const allClean = collectPromptSecrets(
+    "diff --git a/x.ts b/x.ts\n+++ b/x.ts\n+const safe = 1;",
+    ["src/x.ts"],
+    "chore: routine commit",
+  );
+  expect(allClean).toEqual([]);
 });
