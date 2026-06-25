@@ -34,6 +34,13 @@ export interface FileSummary {
    */
   hunkContexts: string[];
   /**
+   * Added *explanatory* comments — the developer's own "why" (`// preventing the
+   * race`, `// making x idempotent`) that compression would otherwise strip.
+   * Surfaced as rationale *hints* for the model (a comment can be stale), never
+   * voted on. Detected structurally, not by keyword.
+   */
+  notes: string[];
+  /**
    * True when the file's only changes are whitespace/formatting (a prettier/
    * eslint --fix run). Derived by comparing a normal numstat against one taken
    * with `-w --ignore-blank-lines`: real changes in the first but `0 0` in the

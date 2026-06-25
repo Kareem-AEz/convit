@@ -46,6 +46,7 @@ export function makeFile(overrides: Partial<FileSummary> = {}): FileSummary {
     importanceScore: 0,
     keyChanges: [],
     hunkContexts: [],
+    notes: [],
     formattingOnly: false,
     ...overrides,
   };

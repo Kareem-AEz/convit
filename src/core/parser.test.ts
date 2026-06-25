@@ -7,6 +7,7 @@ import {
   detectBinaryFiles,
   extractHunkContexts,
   extractKeyChanges,
+  extractNoteComments,
   formatCompressedDiff,
   parseDiffStats,
   summarizeDiff,
@@ -224,6 +225,51 @@ test("extractHunkContexts surfaces the enclosing region, deduped, imports droppe
   const contexts = extractHunkContexts(fileDiff);
   expect(contexts).toContain("async function getStagedContext(config) {");
   expect(contexts).toHaveLength(1); // import context dropped, duplicate collapsed
+});
+
+test("extractNoteComments surfaces added prose comments, not boilerplate", () => {
+  const fileDiff = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "+  // preventing a race when two writes land together",
+    "+  # making the retry idempotent",
+    "+  /* so the spinner clears before we print */",
+    "+  // eslint-disable-next-line no-console",
+    "+   * @param input the raw diff", // JSDoc tag continuation → skipped
+    "+  // x", // too short → skipped
+    "+  // ============================================", // divider → skipped
+    "+  const real = computeThing();", // not a comment
+  ].join("\n");
+  const notes = extractNoteComments(fileDiff);
+  expect(notes).toContain("preventing a race when two writes land together");
+  expect(notes).toContain("making the retry idempotent");
+  expect(notes).toContain("so the spinner clears before we print");
+  expect(notes.some((n) => n.includes("eslint"))).toBe(false);
+  expect(notes.some((n) => n.includes("@param"))).toBe(false);
+  expect(notes).not.toContain("x");
+});
+
+test("extractNoteComments ignores removed and context comment lines", () => {
+  const fileDiff = [
+    "diff --git a/src/x.ts b/src/x.ts",
+    "+++ b/src/x.ts",
+    "-  // preventing the old behavior we just removed",
+    "   // an unchanged context comment here",
+  ].join("\n");
+  expect(extractNoteComments(fileDiff)).toEqual([]);
+});
+
+test("analyzeDiff surfaces developer notes in the compressed summary", () => {
+  const diff = [
+    "diff --git src/pay.ts src/pay.ts",
+    "--- src/pay.ts",
+    "+++ src/pay.ts",
+    "@@ -10,2 +10,3 @@ export function charge(amount) {",
+    "+  // refusing negative amounts to avoid accidental refunds",
+    "+  if (amount < 0) throw new Error('negative');",
+  ].join("\n");
+  const out = formatCompressedDiff(analyzeDiff(diff, ["src/pay.ts"]));
+  expect(out).toContain("notes: refusing negative amounts");
 });
 
 test("P2-T3 — a non-declaration logic change surfaces in the compressed summary", () => {

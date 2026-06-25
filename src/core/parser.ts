@@ -247,6 +247,59 @@ export function extractHunkContexts(
 }
 
 /**
+ * Surfaces added *explanatory* comments — the developer's own "why"
+ * (`// making x idempotent`, `// preventing the race`) — which compression would
+ * otherwise strip alongside boilerplate.
+ *
+ * Detection is structural, not keyword-based (real rationale rarely carries a
+ * `HACK:`/`NOTE:` tag): any added line that *starts* with a line (`//`, `#`) or
+ * block comment marker and reads like prose (≥3 word-ish tokens), excluding directives
+ * (`eslint-`, `ts-ignore`, JSDoc `@tags`), license/SPDX lines, banner dividers,
+ * and bare URLs. A bare `*` (JSDoc continuation) is skipped — it describes the
+ * API, not the change. These are rationale *hints*, not facts: a comment can be
+ * stale or describe surrounding code.
+ */
+export function extractNoteComments(
+  fileDiff: string,
+  maxNotes: number = 3,
+): string[] {
+  const notes: string[] = [];
+  const seen = new Set<string>();
+
+  for (const line of fileDiff.split("\n")) {
+    if (notes.length >= maxNotes) break;
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+
+    const marker = line
+      .slice(1)
+      .trim()
+      .match(/^(?:\/\/+|#+|\/\*+)\s*(.*?)\s*(?:\*\/)?$/);
+    if (!marker) continue;
+
+    const text = marker[1].trim();
+    if (!text || seen.has(text)) continue;
+    if (/^@/.test(text)) continue; // JSDoc tag (@param, @returns)
+    if (
+      /(?:eslint-|prettier-|biome-|@?ts-(?:ignore|expect-error|nocheck)|istanbul |c8 |v8 )/i.test(
+        text,
+      )
+    )
+      continue; // tooling directive
+    if (/^(?:copyright|license|spdx)/i.test(text)) continue;
+    if (/^[-=*_#/]{3,}$/.test(text)) continue; // banner divider
+    if (/^https?:\/\/\S+$/i.test(text)) continue; // bare URL
+
+    const words = text.split(/\s+/).filter((w) => /[a-zA-Z]/.test(w));
+    if (words.length < 3) continue;
+
+    seen.add(text);
+    notes.push(text.substring(0, 90));
+  }
+
+  return notes;
+}
+
+/**
  * Extracts the most semantically meaningful added lines from a file's diff.
  *
  * Single pass buckets each added line into:
@@ -407,6 +460,7 @@ export function analyzeDiff(
       ? []
       : extractKeyChanges(fileDiff, 5, file);
     const hunkContexts = skipExtraction ? [] : extractHunkContexts(fileDiff);
+    const notes = skipExtraction ? [] : extractNoteComments(fileDiff);
 
     fileSummaries.push({
       path: file,
@@ -418,6 +472,7 @@ export function analyzeDiff(
       importanceScore: 0,
       keyChanges,
       hunkContexts,
+      notes,
       formattingOnly,
       ...(section?.oldPath ? { oldPath: section.oldPath } : {}),
     });
@@ -487,6 +542,11 @@ export function formatCompressedDiff(summary: DiffSummary): string {
         );
         if (regions.length > 0) {
           output += `  ↳ regions: ${regions.join("; ")}\n`;
+        }
+        // Developer rationale pulled from added comments — the "why" behind the
+        // change. Hints, not facts (see extractNoteComments).
+        if (file.notes.length > 0) {
+          output += `  ↳ notes: ${file.notes.join("; ")}\n`;
         }
       }
       output += "\n";
