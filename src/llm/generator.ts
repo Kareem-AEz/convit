@@ -126,7 +126,7 @@ export function cleanCommitMessage(raw: string): string {
  * Converts raw API errors into human-readable, actionable error messages.
  *
  * Three recognized error patterns:
- * - AbortError / timeout → model too slow or wrong model name
+ * - AbortError / TimeoutError / timeout → model too slow or wrong model name
  * - 404 + generativelanguage → Gemini URL missing `/openai` suffix
  * - ECONNREFUSED / connect → LM Studio not running or wrong URL
  */
@@ -139,7 +139,13 @@ export function formatApiError(
   const errorMessage = err instanceof Error ? err.message : String(err);
   const errorName = err instanceof Error ? err.name : "UnknownError";
 
-  if (errorName === "AbortError" || errorMessage.includes("timeout")) {
+  // `AbortSignal.timeout()` rejects with a `TimeoutError`, not an `AbortError`,
+  // so match both names (plus a "timeout" message fallback for other providers).
+  if (
+    errorName === "AbortError" ||
+    errorName === "TimeoutError" ||
+    errorMessage.includes("timeout")
+  ) {
     const limit = timeoutSeconds ?? 60;
     const elapsed =
       elapsedSeconds !== undefined
@@ -416,7 +422,15 @@ async function generateFreeText(
 
   console.log("\n" + pc.dim("─".repeat(60)));
 
-  const usageData = await result.usage;
+  // `result.usage` can reject when the stream was interrupted (the same failure
+  // that salvaged `rawMessage` above). Guard it so a usage rejection doesn't
+  // discard the recovered message — fall back to a length/4 token estimate.
+  let usageData: Awaited<typeof result.usage> | undefined;
+  try {
+    usageData = await result.usage;
+  } catch {
+    usageData = undefined;
+  }
   if (usageData && (usageData.totalTokens ?? 0) > 0) {
     inputTokens = usageData.inputTokens ?? 0;
     outputTokens = usageData.outputTokens ?? 0;

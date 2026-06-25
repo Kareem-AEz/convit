@@ -127,6 +127,14 @@ test("formatApiError maps timeouts/aborts to a timeout message", () => {
   expect(msg).toMatch(/my-model/);
 });
 
+test("formatApiError maps a TimeoutError (AbortSignal.timeout) to the timeout message", () => {
+  // AbortSignal.timeout() rejects with name "TimeoutError", not "AbortError".
+  const timeout = new Error("The operation was aborted due to timeout");
+  timeout.name = "TimeoutError";
+  const msg = formatApiError(timeout, "my-model", 45);
+  expect(msg).toMatch(/timed out after 45 seconds/);
+});
+
 // --- P1-T2: cleanCommitMessage keeps body + footers, recognizes scopeless -----
 
 test("preserves a prose body and footers (Co-authored-by, etc.)", () => {
