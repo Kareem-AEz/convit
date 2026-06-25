@@ -1,4 +1,4 @@
-import { DEFAULT_TIMEOUT_MS, EXCLUDED_FILES } from "./defaults";
+import { DEFAULT_TIMEOUT_MS, DEFAULT_TRAILERS, EXCLUDED_FILES } from "./defaults";
 import { cosmiconfigSync } from "cosmiconfig";
 import { pc } from "../cli/ui";
 import { isLocalUrl } from "../utils/url";
@@ -64,6 +64,8 @@ export function getConfig(): Config {
       DEFAULT_TIMEOUT_MS,
     userConfig, // Pass the merged config down to the domain layers
     exclude: [...EXCLUDED_FILES, ...(userConfig.exclude ?? [])],
+    // `?? ` (not `||`) so an explicit `[]` disables trailers; unset → default.
+    trailers: userConfig.commit?.trailers ?? DEFAULT_TRAILERS,
   };
 
   if (debug) {

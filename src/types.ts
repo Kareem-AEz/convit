@@ -125,6 +125,15 @@ export interface UserConfig {
   exclude?: string[];
   /** Custom scope detection patterns */
   scopePatterns?: ScopePattern[];
+  /** Commit-write behavior (footers/trailers). Safe to commit. */
+  commit?: {
+    /**
+     * Footer trailers appended below the commit body before `git commit`.
+     * Each entry is a `Key: value` line; `{model}` expands to the resolved
+     * model id. Unset → `["Generated-with: convit"]`; `[]` disables trailers.
+     */
+    trailers?: string[];
+  };
 }
 
 /** Pre-analysis result for commit type/scope detection */
@@ -205,6 +214,12 @@ export interface Config {
   timeoutMs: number;
   userConfig: UserConfig;
   exclude: string[];
+  /**
+   * Resolved footer trailers (from `userConfig.commit.trailers`, defaulting to
+   * `DEFAULT_TRAILERS`). Appended below the commit body at write time; `[]`
+   * means no trailers.
+   */
+  trailers: string[];
 }
 
 /** Mutable state for the interactive retry loop */

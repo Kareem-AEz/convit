@@ -38,7 +38,7 @@ import {
   detectSensitiveInText,
   promptForSensitiveConfirmation,
 } from "../core/security";
-import { generateCommit } from "../llm/generator";
+import { appendTrailers, generateCommit } from "../llm/generator";
 import { buildPrompt } from "../llm/prompts";
 import type {
   BuiltPrompt,
@@ -121,15 +121,23 @@ async function getStagedContext(
  * with special characters would require complex escaping. `-F-` reads from
  * stdin, bypassing the shell entirely.
  */
-async function commitOrDryRun(message: string, config: Config): Promise<void> {
+async function commitOrDryRun(
+  message: string,
+  config: Config,
+  model?: string,
+): Promise<void> {
+  // Append trailers at the terminal write step — after the edit/regenerate loop —
+  // so they're never fed back to the model or stacked on a regenerate.
+  const finalMessage = appendTrailers(message, config.trailers, model);
+
   if (config.dryRun) {
-    note(`Would commit: ${message.split("\n")[0]}`, "Dry-run");
+    note(`Would commit: ${finalMessage.split("\n")[0]}`, "Dry-run");
     return;
   }
 
   try {
     execFileSync("git", ["commit", "-F-"], {
-      input: message,
+      input: finalMessage,
       stdio: ["pipe", "inherit", "inherit"],
     });
     outro("Committed successfully");
@@ -555,7 +563,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         cancel(gate.reason);
         process.exit(gate.code);
       }
-      await commitOrDryRun(result.message, config);
+      await commitOrDryRun(result.message, config, modelName);
       return;
     }
 
@@ -590,7 +598,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         return;
       }
       if (maxChoice === "accept") {
-        await commitOrDryRun(result.message, config);
+        await commitOrDryRun(result.message, config, modelName);
         return;
       }
       // edit
@@ -639,7 +647,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
       return;
     }
     if (choice === "accept") {
-      await commitOrDryRun(result.message, config);
+      await commitOrDryRun(result.message, config, modelName);
       return;
     }
     if (choice === "regenerate") {

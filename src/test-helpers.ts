@@ -25,6 +25,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     structured: true,
     timeoutMs: 60_000,
     exclude: [],
+    trailers: [],
     userConfig: makeUserConfig(userConfig),
     ...rest,
   };

@@ -123,6 +123,31 @@ export function cleanCommitMessage(raw: string): string {
 }
 
 /**
+ * Appends configured footer trailers below the (already cleaned) commit body,
+ * after a blank line, just before `git commit`. The `{model}` placeholder
+ * expands to the resolved model id for opt-in provenance.
+ *
+ * Runs *after* the generate/edit loop so trailers are never fed back to the
+ * model or stacked on a regenerate — `commitOrDryRun` is the single choke point.
+ * Empty/whitespace-only entries are dropped; an empty trailer list is a no-op.
+ *
+ * Note: trailers are appended as their own blank-line-separated paragraph, so if
+ * the body already ends in a footer block (e.g. `BREAKING CHANGE:`) git sees two
+ * trailer paragraphs. convit bodies don't emit footers today; revisit if they do.
+ */
+export function appendTrailers(
+  message: string,
+  trailers: string[],
+  model?: string,
+): string {
+  const expanded = trailers
+    .map((t) => t.replace(/\{model\}/g, model ?? "unknown").trim())
+    .filter(Boolean);
+  if (expanded.length === 0) return message;
+  return `${message.trimEnd()}\n\n${expanded.join("\n")}`;
+}
+
+/**
  * Converts raw API errors into human-readable, actionable error messages.
  *
  * Three recognized error patterns:

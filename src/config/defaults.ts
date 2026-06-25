@@ -24,6 +24,18 @@ export const MAX_SUBJECT_LENGTH = 50;
 export const MAX_BULLET_LENGTH = 72;
 
 /**
+ * Default footer trailers appended below the commit body at write time.
+ *
+ * A custom `Generated-with:` key (not `Co-authored-by:`) is deliberate: GitHub
+ * parses `Co-authored-by:` and would render convit — a tool — as a human
+ * co-author on the contributor graph. The model id is omitted because it varies
+ * run-to-run and lives in `.env.local` (treated as secret); opt into provenance
+ * with the `{model}` placeholder (`"Generated-with: convit ({model})"`).
+ * Override via `commit.trailers` in `.convitrc.json`; `[]` disables trailers.
+ */
+export const DEFAULT_TRAILERS = ["Generated-with: convit"];
+
+/**
  * Tie-break precedence for the type vote: when two commit types score equal, the
  * one earlier in this list wins. Made explicit (rather than relying on the
  * scores-object key order it used to depend on) so that reordering that object

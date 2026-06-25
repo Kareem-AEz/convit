@@ -1,11 +1,14 @@
 import { test, expect } from "vitest";
 
 import {
+  appendTrailers,
   assembleCommitMessage,
   cleanCommitMessage,
   formatApiError,
   shouldFallbackToFreeText,
 } from "./generator";
+import { validateCommitMessage } from "../core/validator";
+import { makeConfig } from "../test-helpers";
 import { HEADER_RE } from "../types";
 
 const baseStructured = {
@@ -178,4 +181,48 @@ test("preserves a breaking-change marker in the header", () => {
     "- removes .convitrc v1 support",
   ].join("\n");
   expect(cleanCommitMessage(raw)).toBe(raw);
+});
+
+// --- P3-T6: configurable commit trailers --------------------------------------
+
+const body = "feat(api): add login\n\n- adds POST /login";
+
+test("appendTrailers adds the default trailer after a blank line", () => {
+  expect(appendTrailers(body, ["Generated-with: convit"])).toBe(
+    `${body}\n\nGenerated-with: convit`,
+  );
+});
+
+test("appendTrailers expands the {model} placeholder", () => {
+  expect(
+    appendTrailers(body, ["Generated-with: convit ({model})"], "deepseek-v4"),
+  ).toBe(`${body}\n\nGenerated-with: convit (deepseek-v4)`);
+});
+
+test("appendTrailers falls back to 'unknown' when {model} has no model", () => {
+  expect(appendTrailers(body, ["Generated-with: convit ({model})"])).toBe(
+    `${body}\n\nGenerated-with: convit (unknown)`,
+  );
+});
+
+test("appendTrailers with an empty list is a no-op", () => {
+  expect(appendTrailers(body, [])).toBe(body);
+});
+
+test("appendTrailers drops empty/whitespace-only entries (and joins multiple)", () => {
+  expect(appendTrailers(body, ["  ", "Signed-off-by: Jane", ""])).toBe(
+    `${body}\n\nSigned-off-by: Jane`,
+  );
+});
+
+test("a configured trailer survives the clean → append → validate path", () => {
+  // The acceptance guard: appending a footer trailer must not break validation,
+  // and re-cleaning the assembled message must preserve it (P1-T2 footers).
+  const cleaned = cleanCommitMessage(body);
+  const withTrailer = appendTrailers(cleaned, ["Generated-with: convit"]);
+
+  expect(withTrailer.endsWith("\nGenerated-with: convit")).toBe(true);
+  expect(validateCommitMessage(withTrailer, makeConfig()).isValid).toBe(true);
+  // Footer-shaped trailer is preserved if the message is re-cleaned.
+  expect(cleanCommitMessage(withTrailer)).toBe(withTrailer);
 });
