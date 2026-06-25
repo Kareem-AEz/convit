@@ -23,6 +23,38 @@ import type { Config } from "../types";
 
 export { pc };
 
+// -- Machine-output mode (--json / --print) ----------------------------------
+//
+// To keep stdout a clean machine channel, all human chrome — console.log, every
+// clack prompt/note/spinner, the banner — must go to stderr. Rather than rewrite
+// each call site, we reassign `process.stdout.write` to stderr for the whole run
+// (Node's Console, clack, and the spinner all resolve `.write` on the stream
+// object at call time, so the redirect catches them uniformly). The real stdout
+// writer is stashed so `emitMachine` can write the one machine payload to it.
+//
+// MUST be installed before `getConfig()` — the config loader prints to stdout.
+
+let realStdoutWrite: typeof process.stdout.write | null = null;
+
+/** Routes all chrome to stderr and reserves real stdout for `emitMachine`. */
+export function setupMachineOutput(): void {
+  if (realStdoutWrite) return; // idempotent
+  realStdoutWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write =
+    process.stderr.write.bind(process.stderr) as typeof process.stdout.write;
+}
+
+/**
+ * Writes a machine payload to the real stdout, bypassing the chrome redirect.
+ * `done` fires once the bytes have flushed — callers that `process.exit()`
+ * immediately after MUST exit from `done`, since stdout is asynchronous when
+ * piped and a bare `process.exit()` would truncate the output (notably on win32).
+ */
+export function emitMachine(text: string, done?: () => void): void {
+  const write = realStdoutWrite ?? process.stdout.write.bind(process.stdout);
+  write(text, done);
+}
+
 /**
  * Calculates the cost of a generation based on configured per-token rates.
  *

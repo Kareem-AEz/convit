@@ -346,6 +346,8 @@ convit init             setup wizard, writes .convitrc.json
 convit hook install     install a prepare-commit-msg git hook
 convit hook uninstall   remove the convit git hook
 convit --accept         auto-accept first valid message (CI / automation)
+convit --json           emit one JSON object to stdout (chrome → stderr)
+convit --print          emit just the message to stdout (chrome → stderr)
 convit --debug          print prompt, DiffSummary, classification, full scorecard
 convit --dry-run        generate without committing
 convit --model <id>     override model for this run
@@ -353,6 +355,15 @@ convit --no-compress    send raw diff, bypass summarization
 ```
 
 Interactive loop: accept, regenerate, edit, or cancel.
+
+### Non-interactive output (`--json` / `--print`)
+
+For pipelines and tooling. Both run without prompts and route all human chrome to **stderr**, keeping **stdout** a clean machine channel:
+
+- `--print` emits just the generated message — e.g. `git commit -m "$(convit --print)"`.
+- `--json` emits one object: `{ message, trailers, committed, type, scope, confidence, validation, truncated, tokens, cost, model }` — e.g. `convit --json | jq -r .message`. Cost and tokens are numeric; `message` is the raw text and `trailers` lists what would be appended on commit.
+
+On their own, neither commits — they generate and report. **Combine with `--accept` to also create the commit** (`convit --json --accept`). Exit code is non-zero if the generated message fails format validation.
 
 ### Git hook
 

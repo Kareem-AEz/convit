@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { runHook, runInteractiveLoop } from "../src/cli/index";
 import { installHook, uninstallHook } from "../src/cli/hook-install";
 import { runInit } from "../src/cli/init";
-import { cancel, pc } from "../src/cli/ui";
+import { cancel, pc, setupMachineOutput } from "../src/cli/ui";
 import { getConfig } from "../src/config/loader";
 
 dotenv.config({ path: ".env.local", quiet: true });
@@ -51,6 +51,11 @@ if (args[0] === "init") {
     process.exit(1);
   }
 } else {
+  // Reserve stdout for the machine payload BEFORE getConfig(), which prints the
+  // config block to stdout — otherwise it would pollute --json/--print output.
+  if (args.includes("--json") || args.includes("--print")) {
+    setupMachineOutput();
+  }
   const config = getConfig();
   runInteractiveLoop(config).catch((err) => {
     cancel(err instanceof Error ? err.message : String(err));

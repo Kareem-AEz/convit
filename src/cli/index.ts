@@ -21,6 +21,7 @@ import {
   calculateCost,
   cancel,
   confirm,
+  emitMachine,
   formatTokenCount,
   isCancel,
   note,
@@ -39,7 +40,11 @@ import {
   detectSensitiveInText,
   promptForSensitiveConfirmation,
 } from "../core/security";
-import { appendTrailers, generateCommit } from "../llm/generator";
+import {
+  appendTrailers,
+  expandTrailers,
+  generateCommit,
+} from "../llm/generator";
 import { buildPrompt } from "../llm/prompts";
 import type {
   BuiltPrompt,
@@ -161,9 +166,14 @@ async function commitOrDryRun(
   }
 
   try {
+    // git's "[branch hash] subject" summary is chrome. `inherit` writes it to the
+    // real stdout fd, which the process.stdout.write redirect can't intercept — so
+    // in machine-output mode route git's stdout to the real stderr fd (2) to keep
+    // stdout a clean JSON/message channel.
+    const machineOutput = config.json || config.print;
     execFileSync("git", ["commit", "-F-"], {
       input: finalMessage,
-      stdio: ["pipe", "inherit", "inherit"],
+      stdio: ["pipe", machineOutput ? 2 : "inherit", "inherit"],
     });
     outro("Committed successfully");
   } catch (err) {
@@ -413,7 +423,53 @@ export async function runHook(
   }
 }
 
+/**
+ * Shapes the `--json` payload. The `message` is the raw generated text (no
+ * trailers); `trailers` lists the lines that would be appended on commit, so a
+ * consumer can reconstruct the committed form. Token/cost stats are numeric —
+ * the human-formatted "Free (local model)" string never leaks into the JSON.
+ */
+export function buildMachinePayload(
+  result: GenerateResult,
+  context: StagedContext,
+  cost: { inputCost: number; outputCost: number; totalCost: number },
+  config: Config,
+  model: string,
+  committed: boolean,
+) {
+  const { classification } = context;
+  return {
+    message: result.message,
+    trailers: expandTrailers(config.trailers, model),
+    committed,
+    type: classification.type,
+    scope: classification.scope,
+    confidence: classification.confidence,
+    validation: result.validation,
+    truncated: result.wasTruncated,
+    tokens: {
+      input: result.inputTokens,
+      output: result.outputTokens,
+      total: result.inputTokens + result.outputTokens,
+      fromApi: result.tokensFromApi,
+    },
+    cost: {
+      input: cost.inputCost,
+      output: cost.outputCost,
+      total: cost.totalCost,
+      currency: "USD" as const,
+    },
+    model,
+  };
+}
+
 export async function runInteractiveLoop(config: Config): Promise<void> {
+  // --accept (CI), --json, and --print all run without prompts: skip interactive
+  // input, fail closed on the secret gate, and never block on a recoverable error.
+  const nonInteractive = config.accept || config.json || config.print;
+  // Machine-output modes emit to stdout instead of (or alongside) committing.
+  const machineOutput = config.json || config.print;
+
   // -- ENVIRONMENT VALIDATION --
   try {
     verifyGitRepo();
@@ -465,7 +521,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   // -- SENSITIVE DATA GATE --
   if (context.sensitiveMatches.length > 0) {
     const gate = evaluateSensitiveAcceptGate(
-      config.accept,
+      nonInteractive,
       context.sensitiveMatches,
     );
     if (!gate.ok) {
@@ -484,7 +540,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
 
   // -- USER DESCRIPTION --
   let initialDescription = "";
-  if (!config.accept) {
+  if (!nonInteractive) {
     const descResult = await text({
       message: "Describe your changes (optional)",
       placeholder: "Helps generate more focused commit messages",
@@ -581,7 +637,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     if (description && description !== lastScannedDescription) {
       const descMatches = detectSensitiveInText(description, "your description");
       if (descMatches.length > 0) {
-        const gate = evaluateSensitiveAcceptGate(config.accept, descMatches);
+        const gate = evaluateSensitiveAcceptGate(nonInteractive, descMatches);
         if (!gate.ok) {
           cancel(gate.reason);
           process.exit(gate.code);
@@ -604,9 +660,11 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
       result = await generateCommit(model, prompt, modelName, config);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      // --accept must fail closed: never prompt (no TTY in CI) and never exit 0
-      // on a generation failure. Same contract as the validation/secret gates.
-      if (config.accept) {
+      // Non-interactive modes (--accept/--json/--print) must fail closed: never
+      // prompt (no TTY in CI) and never exit 0 on a generation failure. In machine
+      // mode this leaves stdout empty, so a consumer sees a nonzero exit and no
+      // half-formed payload. Same contract as the validation/secret gates.
+      if (nonInteractive) {
         cancel(`Generation failed — ${errMsg}`);
         process.exit(1);
       }
@@ -674,8 +732,32 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     console.log();
 
     // -- AUTO-ACCEPT (--accept flag for CI / automation) --
-    if (config.accept) {
+    if (nonInteractive) {
       const gate = evaluateAutoAcceptGate(result);
+
+      if (machineOutput) {
+        // Commit only when --accept is combined AND the auto-accept gate passes —
+        // never commit a message that plain --accept would have blocked. Commit
+        // first so the payload (with `committed`) is the last thing on stdout.
+        const committed = config.accept && gate.ok && !config.dryRun;
+        if (config.accept && gate.ok) {
+          await commitOrDryRun(result.message, config, modelName);
+        }
+
+        const payload = config.json
+          ? JSON.stringify(
+              buildMachinePayload(result, context, cost, config, modelName, committed),
+            ) + "\n"
+          : result.message + "\n";
+
+        // Exit from the flush callback: stdout is async when piped, so a bare
+        // process.exit() here would truncate the payload. Exit 0 only when the
+        // message is valid, so `convit --json && …` is safe.
+        emitMachine(payload, () => process.exit(gate.ok ? 0 : 1));
+        return;
+      }
+
+      // Plain --accept (human chrome, no machine output): block on invalid.
       if (!gate.ok) {
         cancel(gate.reason);
         process.exit(gate.code);

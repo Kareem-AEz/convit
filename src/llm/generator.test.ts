@@ -4,6 +4,7 @@ import {
   appendTrailers,
   assembleCommitMessage,
   cleanCommitMessage,
+  expandTrailers,
   formatApiError,
   shouldFallbackToFreeText,
 } from "./generator";
@@ -212,6 +213,21 @@ test("appendTrailers with an empty list is a no-op", () => {
 test("appendTrailers drops empty/whitespace-only entries (and joins multiple)", () => {
   expect(appendTrailers(body, ["  ", "Signed-off-by: Jane", ""])).toBe(
     `${body}\n\nSigned-off-by: Jane`,
+  );
+});
+
+test("expandTrailers resolves {model}, drops empties, and mirrors appendTrailers", () => {
+  expect(expandTrailers(["Generated-with: convit ({model})"], "deepseek")).toEqual(
+    ["Generated-with: convit (deepseek)"],
+  );
+  expect(expandTrailers(["  ", "Signed-off-by: Jane", ""])).toEqual([
+    "Signed-off-by: Jane",
+  ]);
+  expect(expandTrailers([])).toEqual([]);
+  // The lines expandTrailers returns are exactly what appendTrailers appends.
+  const lines = expandTrailers(["Generated-with: convit"]);
+  expect(appendTrailers(body, ["Generated-with: convit"])).toBe(
+    `${body}\n\n${lines.join("\n")}`,
   );
 });
 

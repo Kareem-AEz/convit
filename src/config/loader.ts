@@ -29,6 +29,8 @@ export function getConfig(): Config {
   const accept = args.includes("--accept");
   const debug = args.includes("--debug");
   const structured = !args.includes("--no-structured");
+  const json = args.includes("--json");
+  const print = args.includes("--print");
 
   const modelIdx = args.indexOf("--model");
   const cliModelOverride =
@@ -58,6 +60,8 @@ export function getConfig(): Config {
     accept,
     debug,
     structured,
+    json,
+    print,
     timeoutMs:
       parseInt(process.env.CONVIT_TIMEOUT ?? "", 10) ||
       userConfig.rules?.timeout ||

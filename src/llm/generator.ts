@@ -140,11 +140,20 @@ export function appendTrailers(
   trailers: string[],
   model?: string,
 ): string {
-  const expanded = trailers
-    .map((t) => t.replace(/\{model\}/g, model ?? "unknown").trim())
-    .filter(Boolean);
+  const expanded = expandTrailers(trailers, model);
   if (expanded.length === 0) return message;
   return `${message.trimEnd()}\n\n${expanded.join("\n")}`;
+}
+
+/**
+ * Resolves trailer templates to the lines that would be appended: expands the
+ * `{model}` placeholder and drops empty/whitespace-only entries. Exposed so the
+ * `--json` payload can report the trailers without re-appending them.
+ */
+export function expandTrailers(trailers: string[], model?: string): string[] {
+  return trailers
+    .map((t) => t.replace(/\{model\}/g, model ?? "unknown").trim())
+    .filter(Boolean);
 }
 
 /**

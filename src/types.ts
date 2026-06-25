@@ -205,6 +205,14 @@ export interface Config {
   accept: boolean;
   debug: boolean;
   /**
+   * Machine-output modes (non-interactive, like `accept`). `json` emits one JSON
+   * object to stdout; `print` emits just the message. Both route all human chrome
+   * to stderr and, on their own, do **not** commit — combine with `accept` to
+   * also create the commit. Precedence when both set: `json` wins.
+   */
+  json: boolean;
+  print: boolean;
+  /**
    * Prefer schema-constrained generation (the model emits a validated
    * `{type, scope, subject, body}` object) over free-text parsing. Defaults to
    * true; `--no-structured` forces the free-text path. When the endpoint rejects

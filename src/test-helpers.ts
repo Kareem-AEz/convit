@@ -23,6 +23,8 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     accept: false,
     debug: false,
     structured: true,
+    json: false,
+    print: false,
     timeoutMs: 60_000,
     exclude: [],
     trailers: [],
