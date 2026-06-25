@@ -28,12 +28,16 @@ export const MAX_BULLET_LENGTH = 72;
  *
  * A custom `Generated-with:` key (not `Co-authored-by:`) is deliberate: GitHub
  * parses `Co-authored-by:` and would render convit — a tool — as a human
- * co-author on the contributor graph. The model id is omitted because it varies
- * run-to-run and lives in `.env.local` (treated as secret); opt into provenance
- * with the `{model}` placeholder (`"Generated-with: convit ({model})"`).
- * Override via `commit.trailers` in `.convitrc.json`; `[]` disables trailers.
+ * co-author on the contributor graph. The repo URL makes convit discoverable
+ * from any commit (GitHub auto-links bare URLs); the model id is omitted because
+ * it varies run-to-run and lives in `.env.local` (treated as secret). Opt into
+ * model provenance with the `{model}` placeholder (`"Generated-with: convit
+ * ({model})"`). Override via `commit.trailers` in `.convitrc.json`; `[]`
+ * disables trailers.
  */
-export const DEFAULT_TRAILERS = ["Generated-with: convit"];
+export const DEFAULT_TRAILERS = [
+  "Generated-with: convit (https://github.com/Kareem-AEz/convit)",
+];
 
 /**
  * Tie-break precedence for the type vote: when two commit types score equal, the

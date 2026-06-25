@@ -372,11 +372,16 @@ Secrets go in `.env` only: `CONVIT_URL`, `CONVIT_KEY`, `CONVIT_MODEL`. Optional:
     { "pattern": "packages/([^/]+)/.*", "scope": "$1", "weight": 10 },
     { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 8 }
   ],
-  "exclude": ["src/generated/prisma"]
+  "exclude": ["src/generated/prisma"],
+  "commit": {
+    "trailers": ["Generated-with: convit (https://github.com/Kareem-AEz/convit)"]
+  }
 }
 ```
 
 `scopePatterns` are regex strings. `$1` injects the first capture group. User patterns always run before built-in defaults. Higher `weight` wins when multiple patterns compete over the same changeset.
+
+`commit.trailers` are footer lines appended below the commit body before `git commit`. Each is a `Key: value` line; `{model}` expands to the resolved model id (e.g. `"Generated-with: convit ({model})"`). Unset → a single `Generated-with: convit (<repo URL>)` trailer; set `[]` to disable trailers entirely.
 
 ---
 

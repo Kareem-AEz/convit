@@ -215,6 +215,45 @@ Cargo.lock          go.sum           Gemfile.lock
 
 ---
 
+## `commit`
+
+Controls how the final commit message is written.
+
+### `commit.trailers`
+
+|             |                                                            |
+| ----------- | ---------------------------------------------------------- |
+| **Type**    | `string[]`                                                 |
+| **Default** | `["Generated-with: convit (https://github.com/Kareem-AEz/convit)"]` |
+
+Footer trailers appended below the commit body, after a blank line, just before
+`git commit`. Each entry is a single `Key: value` line (git-trailer grammar).
+
+- **Unset** → a single `Generated-with: convit (<repo URL>)` trailer. A custom
+  `Generated-with:` key is used (not `Co-authored-by:`) so GitHub does not render
+  convit — a tool — as a human co-author on the contributor graph.
+- **`[]`** → disables trailers entirely. No footer is appended.
+- **`{model}` placeholder** → expands to the resolved model id, for opt-in
+  provenance: `"Generated-with: convit ({model})"`. The default omits the model
+  because it varies run-to-run and the provider/model lives in `.env` (secret).
+
+Trailers are applied at write time — after the regenerate/edit loop — so they are
+never fed back to the model or stacked on a retry. They are treated as footers by
+validation, so a configured trailer never trips the format check.
+
+**Example:**
+
+```json
+"commit": {
+  "trailers": [
+    "Generated-with: convit ({model})",
+    "Signed-off-by: Jane Dev <jane@example.com>"
+  ]
+}
+```
+
+---
+
 ## Environment variables (not in config file)
 
 These are never read from `.convitrc.json`. Set them in `.env`.
