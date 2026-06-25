@@ -9,6 +9,7 @@
 
 import { execFileSync } from "child_process";
 import { DEFAULT_MODEL } from "../config/defaults";
+import { isLocalUrl } from "./url";
 import type { Config } from "../types";
 
 /**
@@ -16,10 +17,11 @@ import type { Config } from "../types";
  *
  * Strategy (in order):
  * 1. If `config.model` is set (via CLI or env), use it directly — no network call.
- * 2. Hit `GET /v1/models` with a 1-second hard timeout. LM Studio returns the
- *    currently loaded model as the first entry in `data[]`. This is the model
- *    that will actually respond to requests, so we use it without the user
- *    needing to configure anything.
+ * 2. Only when the endpoint is local (LM Studio): hit `GET /v1/models` with a
+ *    1-second hard timeout and take the first entry of `data[]`, which LM Studio
+ *    reports as the currently loaded model. On a remote multi-model endpoint
+ *    this is skipped — blindly taking `data[0]` there risks billing the wrong
+ *    model, so an explicit `CONVIT_MODEL` is expected (DEFAULT_MODEL otherwise).
  * 3. On any failure (timeout, 404, parse error, LM Studio not running), fall
  *    through silently to DEFAULT_MODEL.
  *
@@ -27,6 +29,10 @@ import type { Config } from "../types";
  */
 export async function getLoadedModel(config: Config): Promise<string> {
   if (config.model) return config.model;
+
+  // Auto-detection from data[0] is only trustworthy for a local single-model
+  // server; don't guess a model on a remote endpoint.
+  if (!isLocalUrl(config.apiUrl)) return DEFAULT_MODEL;
 
   try {
     const controller = new AbortController();
@@ -51,10 +57,12 @@ export async function getLoadedModel(config: Config): Promise<string> {
 /**
  * Checks if the current directory is a valid git repository.
  *
- * This handles the "dubious ownership" error on Windows by checking
- * the exit code and stderr of `git rev-parse`.
+ * Branches on the actual failure so the message is honest: git missing from
+ * PATH, dubious ownership (Windows), a genuine non-repo, or anything else
+ * (e.g. permissions) — the last surfaces git's real stderr instead of masking
+ * every failure as "Not a git repository".
  *
- * @throws Error with a descriptive message if not a repo or ownership is dubious.
+ * @throws Error with a message describing the specific failure.
  */
 export function verifyGitRepo(): void {
   try {
@@ -63,6 +71,13 @@ export function verifyGitRepo(): void {
     });
   } catch (err) {
     const stderr = (err as any).stderr?.toString() || "";
+    const code = (err as any).code;
+
+    if (code === "ENOENT") {
+      throw new Error(
+        "git was not found on your PATH. Install git, then try again.",
+      );
+    }
 
     if (stderr.includes("detected dubious ownership")) {
       throw new Error(
@@ -72,8 +87,15 @@ export function verifyGitRepo(): void {
       );
     }
 
+    if (/not a git repository/i.test(stderr)) {
+      throw new Error(
+        "Not a git repository (or any of the parent directories): .git",
+      );
+    }
+
+    // Unknown failure (permissions, corrupt repo, …) — don't mask it.
     throw new Error(
-      "Not a git repository (or any of the parent directories): .git",
+      `git rev-parse failed: ${stderr.trim() || (err as Error).message}`,
     );
   }
 }
