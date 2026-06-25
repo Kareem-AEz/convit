@@ -19,7 +19,9 @@ import type { SensitiveDataMatch } from "../types";
  * with the `g` flag maintains internal state (lastIndex) between calls on
  * different strings, causing every other call to miss matches.
  *
- * Preview masking: shows the first 4 and last 4 chars with `****` in the middle.
+ * Preview masking: reveals the first 4 and last 4 chars (with `****` between)
+ * only when the secret is long enough that ≤ half of it is exposed (≥ 16 chars);
+ * shorter matches mask entirely to `****` so we never leak most of a secret.
  */
 function scanLine(
   line: string,
@@ -35,7 +37,7 @@ function scanLine(
     if (match) {
       const fullMatch = match[0];
       const preview =
-        fullMatch.length > 12
+        fullMatch.length >= 16
           ? fullMatch.substring(0, 4) +
             "****" +
             fullMatch.substring(fullMatch.length - 4)
@@ -55,25 +57,37 @@ function scanLine(
  * `+`, excluding the `+++` file header). Removed lines (starting with `-`) are
  * explicitly ignored. The goal is to prevent secrets from being *sent to an API*,
  * not to police historical commits.
+ *
+ * Line numbers are reconstructed from the `@@ -old +new @@` hunk headers so the
+ * reported line matches the file's new-side line number — added lines scan at
+ * the running new-file counter, context lines advance it, removed lines don't.
  */
 export function detectSensitiveData(diff: string): SensitiveDataMatch[] {
   const matches: SensitiveDataMatch[] = [];
   const lines = diff.split("\n");
 
   let currentFile = "";
-  let lineNumber = 1;
+  let newLine = 0; // running line number on the new (post-change) side
 
   for (const line of lines) {
     if (line.startsWith("diff --git")) {
       const match = line.match(/diff --git (?:a\/)?(\S+)/);
-      if (match) {
-        currentFile = match[1];
-        lineNumber = 1;
-      }
-    } else if (line.startsWith("+") && !line.startsWith("+++")) {
-      lineNumber++;
-      matches.push(...scanLine(line, lineNumber, currentFile));
+      if (match) currentFile = match[1];
+      newLine = 0;
+    } else if (line.startsWith("@@")) {
+      // @@ -oldStart,oldLen +newStart,newLen @@ — anchor the new-file counter.
+      const m = line.match(/\+(\d+)/);
+      if (m) newLine = parseInt(m[1], 10);
+    } else if (line.startsWith("+++") || line.startsWith("---")) {
+      // file headers, not content — ignore
+    } else if (line.startsWith("+")) {
+      matches.push(...scanLine(line, newLine, currentFile));
+      newLine++;
+    } else if (!line.startsWith("-")) {
+      // context (unchanged) line advances the new-file counter
+      newLine++;
     }
+    // removed lines ("-") do not advance the new-file counter
   }
 
   return matches;

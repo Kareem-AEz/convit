@@ -166,8 +166,16 @@ export const SENSITIVE_PATTERNS: Array<{
     label: "private_key",
   },
   { pattern: /ghp_[A-Za-z0-9]{36}/, label: "github_pat" },
-  { pattern: /sk-[A-Za-z0-9]{48}/, label: "openai_key" },
-  { pattern: /AKIA[0-9A-Z]{16}/, label: "aws_key" },
+  // Fine-grained GitHub PAT (github_pat_…) — longer, allows underscores.
+  { pattern: /github_pat_[A-Za-z0-9_]{22,}/, label: "github_pat" },
+  // OpenAI: classic `sk-…48` plus project/service-account prefixes (sk-proj-,
+  // sk-svcacct-), which use a longer, `-`/`_`-bearing body.
+  { pattern: /sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}/, label: "openai_key" },
+  { pattern: /glpat-[A-Za-z0-9_-]{20,}/, label: "gitlab_pat" },
+  // Google API key (AIza…), 39 chars total.
+  { pattern: /AIza[A-Za-z0-9_-]{35}/, label: "gcp_key" },
+  // AWS long-term (AKIA) and temporary (ASIA) access key IDs.
+  { pattern: /(?:AKIA|ASIA)[0-9A-Z]{16}/, label: "aws_key" },
   // Generic key=value patterns (quoted OR unquoted value).
   {
     pattern:

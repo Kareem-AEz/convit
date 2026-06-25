@@ -166,7 +166,9 @@ export type SensitiveDataType =
   | "private_key"
   | "github_pat"
   | "openai_key"
-  | "aws_key";
+  | "aws_key"
+  | "gitlab_pat"
+  | "gcp_key";
 
 /** Result of sensitive data scanning */
 export interface SensitiveDataMatch {

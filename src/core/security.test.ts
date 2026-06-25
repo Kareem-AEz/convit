@@ -110,6 +110,65 @@ test("does not match innocuous unquoted short values", () => {
   expect(detectSensitiveData(diffWith(lines, ".env"))).toEqual([]);
 });
 
+// --- Phase-2 bundle: broadened token formats ---------------------------------
+
+test("detects newer token formats (fine-grained PAT, sk-proj, glpat, AIza, ASIA)", () => {
+  const ghpat = "github_pat_" + "A".repeat(22) + "_" + "b".repeat(10);
+  const skProj = "sk-proj-" + "a".repeat(40);
+  const glpat = "glpat-" + "x".repeat(20);
+  const aiza = "AIza" + "A".repeat(35);
+  const asia = "ASIA" + "ABCD1234EFGH5678";
+
+  expect(detectSensitiveData(diffWith([`t = ${ghpat}`]))[0]?.type).toBe(
+    "github_pat",
+  );
+  expect(detectSensitiveData(diffWith([`k = ${skProj}`]))[0]?.type).toBe(
+    "openai_key",
+  );
+  expect(detectSensitiveData(diffWith([`t = ${glpat}`]))[0]?.type).toBe(
+    "gitlab_pat",
+  );
+  expect(detectSensitiveData(diffWith([`k = ${aiza}`]))[0]?.type).toBe(
+    "gcp_key",
+  );
+  expect(detectSensitiveData(diffWith([`id = ${asia}`]))[0]?.type).toBe(
+    "aws_key",
+  );
+});
+
+// --- Phase-2 bundle: real line numbers from hunk headers ---------------------
+
+test("reports the new-file line number parsed from the @@ hunk header", () => {
+  const ghp = "ghp_" + "a".repeat(36);
+  const diff = [
+    "diff --git a/x.ts b/x.ts",
+    "--- a/x.ts",
+    "+++ b/x.ts",
+    "@@ -40,3 +40,4 @@ function f() {",
+    " context line", // line 40
+    " another context", // line 41
+    `+const leak = "${ghp}";`, // line 42
+    " trailing context", // line 43
+  ].join("\n");
+  const [match] = detectSensitiveData(diff);
+  expect(match.line).toBe(42);
+});
+
+// --- Phase-2 bundle: tighter masking -----------------------------------------
+
+test("masks mid-length matches entirely (≥16 rule), still reveals long ones", () => {
+  // A 13-char keyword=value secret used to leak 8 of its chars under the old
+  // `> 12` rule; now anything under 16 chars masks fully. Keyword and value are
+  // kept separate in source so the literal doesn't trip the scanner here.
+  const short = detectSensitiveData(diffWith(["pwd=" + "123456789"], ".env"));
+  expect(short[0]?.preview).toBe("****");
+
+  // A 40-char token still reveals first4/last4.
+  const ghp = "ghp_" + "c".repeat(36);
+  const long = detectSensitiveData(diffWith([`t = ${ghp}`]));
+  expect(long[0]?.preview).toBe("ghp_****cccc");
+});
+
 // --- P2-T6: scan all prompt-bound text, not just the diff --------------------
 
 test("detectSensitiveInText finds a secret in plain (non-diff) text", () => {
