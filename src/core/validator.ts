@@ -44,9 +44,12 @@ export function getRetryTemperature(
  * Analyzes a previously generated commit message and produces structured
  * correction hints for the next retry attempt.
  *
- * Each hint has a `priority`:
- * - `must_fix`: blocking issues the AI must address (format, length, examples)
- * - `should_fix`: style recommendations (casing, trailing period)
+ * Each hint's `priority` mirrors what `validateCommitMessage` does with the same
+ * check, so the two stay in agreement (P2-T5):
+ * - `must_fix`: checks that fail validation (set `isValid: false`) — the format
+ *   grammar and an empty message.
+ * - `should_fix`: checks that only warn — subject length/casing/period, bullet
+ *   count/length, and copied-example detection (all advisory, never blocking).
  */
 export function generateCorrectionHints(
   message: string,
@@ -71,7 +74,7 @@ export function generateCorrectionHints(
       issue: "subject_too_long",
       description: `Subject is ${subject.length} characters (max: ${maxSubject})`,
       suggestion: `Shorten the subject to under ${maxSubject} characters. Current: "${subject.substring(0, 60)}..."`,
-      priority: "must_fix",
+      priority: "should_fix",
     });
   }
 
@@ -99,7 +102,7 @@ export function generateCorrectionHints(
       issue: "missing_bullets",
       description: `Only ${bullets.length} bullet point(s), need at least ${minBullets}`,
       suggestion: `Add ${minBullets - bullets.length} more bullet point(s) explaining the key changes.`,
-      priority: "must_fix",
+      priority: "should_fix",
     });
   }
 
@@ -135,7 +138,7 @@ export function generateCorrectionHints(
         description: "Message appears to contain example text from the prompt",
         suggestion:
           "Write about the actual changes in the diff, not the examples.",
-        priority: "must_fix",
+        priority: "should_fix",
       });
       break;
     }

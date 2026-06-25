@@ -74,11 +74,52 @@ test("validateCommitMessage: long subject is a warning, not an error", () => {
   expect(result.warnings.some((w) => w.includes("chars"))).toBe(true);
 });
 
-test("generateCorrectionHints flags an over-long subject as must_fix", () => {
+test("generateCorrectionHints flags an over-long subject as should_fix", () => {
   const longSubject = "x".repeat(80);
   const hints = generateCorrectionHints(`feat(api): ${longSubject}`, makeConfig());
   const hint = hints.find((h) => h.issue === "subject_too_long");
   expect(hint).toBeTruthy();
+  expect(hint?.priority).toBe("should_fix");
+});
+
+// P2-T5: validateCommitMessage and generateCorrectionHints must agree on what
+// blocks vs warns. Contract: a check that fails validation (error → isValid
+// false) emits a `must_fix` hint; a check that only warns emits `should_fix`.
+// These assert *agreement* — both sides for the same triggering message — so
+// the test stays meaningful even if one side is later flipped in isolation.
+test("P2-T5: soft checks warn in validation and map to should_fix hints", () => {
+  const softCases: Array<{ name: string; message: string; issue: string }> = [
+    { name: "subject_too_long", message: `feat(api): ${"x".repeat(60)}`, issue: "subject_too_long" },
+    { name: "missing_bullets", message: "feat(api): add a thing", issue: "missing_bullets" },
+    { name: "subject_wrong_case", message: "feat(api): Add a thing", issue: "subject_wrong_case" },
+    { name: "subject_has_period", message: "feat(api): add a thing.", issue: "subject_has_period" },
+    { name: "bullet_too_long", message: `feat(api): add x\n\n- ${"y".repeat(80)}`, issue: "bullet_too_long" },
+    { name: "copied_example", message: "feat(auth): implement password reset functionality", issue: "copied_example" },
+  ];
+
+  for (const { name, message, issue } of softCases) {
+    // Validation side: soft → never blocks.
+    const result = validateCommitMessage(message, makeConfig());
+    expect(result.isValid, `${name} should not block`).toBe(true);
+
+    // Hint side: soft → should_fix, not must_fix.
+    const hint = generateCorrectionHints(message, makeConfig()).find(
+      (h) => h.issue === issue,
+    );
+    expect(hint, `${name} should produce a hint`).toBeTruthy();
+    expect(hint?.priority, `${name} should be should_fix`).toBe("should_fix");
+  }
+});
+
+test("P2-T5: the format check blocks in validation and maps to a must_fix hint", () => {
+  const message = "not a commit";
+
+  const result = validateCommitMessage(message, makeConfig());
+  expect(result.isValid).toBe(false); // blocks
+
+  const hint = generateCorrectionHints(message, makeConfig()).find(
+    (h) => h.issue === "invalid_format",
+  );
   expect(hint?.priority).toBe("must_fix");
 });
 
