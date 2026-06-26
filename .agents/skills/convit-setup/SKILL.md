@@ -1,221 +1,117 @@
 ---
 name: convit-setup
 description: >
-  Scans a codebase and generates a .convitrc.json configuration file for the
-  convit AI commit CLI. Analyzes project structure from first principles to
-  architect scope patterns, exclude paths, and rules. Use when setting up convit,
-  configuring commit scopes, running convit init, or customizing how convit
-  analyzes a project. Triggers on convit setup, .convitrc, commit scopes, or
-  convit init.
+  Everything an AI agent needs to adopt convit — the local-first CLI that turns
+  staged git changes into Conventional Commit messages. Covers what convit is,
+  installing it, connecting a model (local LM Studio/Ollama or any
+  OpenAI-compatible cloud endpoint), architecting a `.convitrc.json` from the
+  project's structure, and running it to create commits. Use this whenever the
+  user mentions convit, asks to set it up or configure it, wants a `.convitrc`
+  or commit scopes, runs `convit init`, or asks you to generate or make a commit
+  with convit (including `--accept`, `--json`, `--amend`, `--candidates`, or the
+  git hook). Reach for it even when the user just says "commit with convit" or
+  "set up conventional commits for this repo."
 argument-hint: "[path to project root, or empty for current directory]"
+disable-model-invocation: true
 ---
 
-# convit Setup
+# convit
 
-## 🚨 Security Mandate (CRITICAL)
+convit is a CLI that writes Conventional Commit messages from your **staged**
+git changes. What sets it apart is a **Pre-Analysis Intelligence Layer** that
+runs entirely on the local machine _before_ any model call: it classifies each
+changed file, casts weighted votes on the commit type and scope, scans the diff
+for secrets, and compresses large diffs — so the model receives half-analyzed
+context instead of a raw dump. It is **local-first**: it talks to LM Studio at
+`http://localhost:1234/v1` by default, but works with any OpenAI-compatible
+endpoint (Ollama, OpenAI, Gemini, Anthropic, OpenRouter, Groq, AI Gateway).
 
-- **Direct Environment Access Forbidden:** Never use `read_file`, `grep_search`, or any other tool to read `.env`, `.env.local`, or any file containing secrets.
-- **Environment Verification:** To check for required `CONVIT_*` variables, you MUST ONLY use the `ensure-convit-env.mjs` script (located in the skill's `scripts/` folder). This script safely checks variable names without exposing values.
-- **Zero-Credential Policy:** Never log, print, or commit any credentials or API keys.
+Pick the path that matches the request:
 
-## convit Setup Overview
+- **Setting up / configuring** convit (install, connect a model, write
+  `.convitrc.json`) → start at **Install & connect a model** below.
+- **Using** convit to make a commit (interactive, CI, amend, candidates, hooks)
+  → jump to **Use convit** and read
+  [references/usage.md](references/usage.md) for flag-by-flag detail.
 
-Generates a `.convitrc.json` tailored to the actual structure of the codebase.
-The config should capture Intent, not just file paths.
+## 🚨 Security mandate (read first)
 
-**Quick start:** (1) Apply the Hierarchy Principle to find the Primary Structural
-Boundary. (2) Run Structural Analysis (Full-Scan, Depth, Gitignore, Noise). (3) Apply Weighting
-Engine rules. (4) Synthesize patterns with user patterns first. (5) Ask user to
-confirm. (6) Write config.
+convit operates on repos that may contain secrets, and its config lives next to
+`.env` files. Hold these invariants no matter what the task is:
 
-Never include a `provider` block. API credentials (`CONVIT_URL`, `CONVIT_KEY`,
-`CONVIT_MODEL`) belong in `.env` only. The config file is safe to commit.
+- **Never read secret files.** Do not open, `grep`, or print `.env`,
+  `.env.local`, or anything holding credentials. To check which `CONVIT_*`
+  variables exist, use **only** `scripts/ensure-convit-env.mjs` in this skill —
+  it inspects variable _names_, never values.
+- **Credentials live in `.env` only.** `CONVIT_URL`, `CONVIT_KEY`,
+  `CONVIT_MODEL` belong in `.env`/`.env.local`, never in `.convitrc.json`. The
+  config file is meant to be committed; a secret in it is a leak.
+- **Never write a `provider`, `apiKey`, `baseUrl`, or `model` key** into
+  `.convitrc.json`.
 
-For the full semantics of every variable, see [config-reference.md](config-reference.md).
+## Install & connect a model
 
----
+Install convit (project-local is recommended so the version is pinned):
 
-## The Mental Model (The Hierarchy Principle)
-
-Before scanning folders, identify the **Primary Structural Boundary**. This is
-the deepest semantic unit that defines how the codebase is organized. The agent
-must reason from first principles, not from a lookup table.
-
-**Surgical Core (Weight 10/8).** Where the primary application logic lives.
-Common candidates: `src/`, `lib/`, `app/`. Domain-driven: `src/features/auth/`,
-`src/modules/payments/`, `lib/domains/orders/`. Layered: `controllers/`,
-`models/`, `views/`, or `handlers/`, `services/`, `repositories/`. Monorepo:
-`packages/` or `apps/` contains distinct projects. Each subdirectory is a
-top-level scope. Weight 10 for deepest semantic boundary, 8 for broad
-organizational folders.
-
-**Functional Layers (Weight 5).** Cross-cutting concerns: `ui/`, `db/`, `api/`.
-The first segment under the core is the scope when fixed. Example: `db/.*` →
-`db`, `prisma/.*` → `db`.
-
-**Auxiliary Support (Weight 3/5).** The tools and documentation that support
-the project. Weight 5: `assets/`, `docs/`, `images/`. Weight 3: `.cursor/`,
-`.github/`, `scripts/`.
-
-Apply the Hierarchy Principle to any codebase. A 10-year-old COBOL project with
-`cobol/programs/`, `cobol/copybooks/`, `cobol/data/` is layered. A brand-new
-Next.js app with `src/app/(auth)/`, `src/app/(dashboard)/` is domain-driven.
-The reasoning engine adapts.
-
----
-
-## Phase 1 — Structural Analysis (Principles, not Folders)
-
-Run this protocol. Do not rely on hardcoded paths.
-
-### Full-Scan Protocol
-
-Scan every top-level directory. If a directory is not build noise (e.g. `.cursor`,
-`.github`, `assets`, `docs`, `scripts`), propose it as a scope. Total coverage:
-the generated config must capture the entire repo, not just application code.
-
-### Gitignore Intelligence
-
-**Primary Check.** If a directory is in `.gitignore`, skip it. Git already
-handles it. Do not propose it as a scope or add it to exclude.
-
-**Exclusion Candidate.** If a directory looks like build output (e.g. `dist/`,
-`build/`, `out/`, `target/`) but is NOT in `.gitignore`, it is a high-priority
-candidate for the exclude list. Propose adding it.
-
-### Detect Depth
-
-Walk paths. If they go 3+ levels deep (e.g. `src/features/auth/internal/`),
-the middle segment is likely the scope. The pattern should capture that segment
-with `([^/]+)`. Shallow structures (e.g. `src/auth.ts`, `src/user.ts`) suggest
-a single `src/([^/]+)` pattern. Deep structures suggest domain-specific patterns
-like `src/features/([^/]+)/.*` or `src/modules/([^/]+)/.*`.
-
-### Identify Noise
-
-Look for lockfiles, `.cache`, `dist`, `target`, `build`, `out`, `__pycache__`,
-`.pytest_cache`, `*.egg-info`, generated output (e.g. `src/generated/`,
-`.prisma/`). Add these to `exclude`. Do not add `node_modules` — it is
-already excluded by default.
-
----
-
-## Phase 2 — The Weighting Engine Rules
-
-Apply these weights when architecting scope patterns. Higher weight wins ties.
-
-| Weight | Boundary Type                | Example Pattern                                                      |
-| ------ | ---------------------------- | -------------------------------------------------------------------- |
-| **10** | Deepest semantic boundary    | `src/modules/([^/]+)/.*`, `packages/([^/]+)/.*`, `crates/([^/]+)/.*` |
-| **8**  | Broad organizational folders | `src/([^/]+)/.*`, `lib/([^/]+)/.*`                                   |
-| **7**  | Universal Semantic Scopes    | `package.json` → `deps`, `.gitignore` → `git`, `README.md` → `docs`  |
-| **5**  | Transversal layers           | `ui/.*` → `ui`, `db/.*` → `db`, `prisma/.*` → `db`                   |
-| **5**  | Documentation and Media      | `assets/.*`, `docs/.*`, `images/.*`                                  |
-| **3**  | Tooling and Infrastructure   | `.cursor/.*`, `.github/.*`, `scripts/.*`, `config/.*` → `config`     |
-
-The primary boundary gets 10. Fallback patterns (catch-all under core) get 6–8.
-Universal root files (package.json, gitignore, readme) get 7 to ensure they are
-more specific than the root catch-all but subservient to deep domain logic.
-Cross-cutting concerns (UI, DB, API) and auxiliary docs/media get 5. Tooling,
-scripts, and config get 3.
-
-Transversal layers stay at 5 so the primary boundary (10) overrides when a file
-lives in both. Example: `src/features/auth/ui/button.tsx` should scope to `auth`,
-not `ui`. The domain wins.
-
----
-
-## Phase 3 — Synthesis Logic
-
-Generate regex patterns using `([^/]+)` to dynamically capture directory names
-as scopes. The `scope` field is `"$1"` when the pattern captures a segment, or
-a literal string (e.g. `"db"`, `"ui"`) when the layer is fixed.
-
-**Universal Semantic Patterns** should be proposed for common root files:
-
-- `package.json` and lockfiles → `deps`
-- `.gitignore`, `.cursorignore`, `.dockerignore` → `git`
-- `README.md`, `LICENSE`, `CONTRIBUTING.md` → `docs`
-- `.env.example`, `.env.local` → `env`
-- `.convitrc.json` → `convit`
-
-**User-specific patterns go at the top** of the `scopePatterns` array. They
-override built-in defaults. If the user has custom domains or conventions,
-place those first.
-
-Always include a fallback pattern at the end unless the user opts out:
-
-```json
-{ "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 6 }
+```bash
+npm install -D @kareem-aez/convit
+# or run once with no install:
+npx @kareem-aez/convit
 ```
 
-Adjust the fallback to match the core (e.g. `lib/([^/]+)/.*` if the core is
-`lib/`).
+Wire a `commit` script so the team has one command:
 
----
+```json
+{ "scripts": { "commit": "convit" } }
+```
 
-## Phase 4 — Ask
+Then connect a model — convit needs an OpenAI-compatible endpoint:
 
-Present findings and ask the user to confirm or adjust. Only ask about signals
-that actually fired. Group patterns by hierarchy so the user sees how the
-project is being analyzed.
+- **Local (default, private, free).** Start LM Studio, load a model, run
+  `convit`. It auto-detects the loaded model from `/v1/models` (1s timeout);
+  code never leaves the machine and a `[SECURE]` badge shows. Ollama is the same
+  with `CONVIT_URL="http://localhost:11434/v1"`.
+- **Cloud.** Set three env vars in `.env` (or `.env.local`, which loads first):
 
-### Scope pattern prompts
+  ```env
+  CONVIT_URL="https://api.openai.com/v1"
+  CONVIT_KEY="sk-..."
+  CONVIT_MODEL="gpt-4o"
+  ```
 
-Group proposed scope patterns under three headers:
+  Only the URL, key, and model change between providers. For Gemini the URL
+  must end with `/openai`.
 
-**Primary Boundary (Weight 8–10)**
+To check for or scaffold the env vars **without exposing any values**, offer to
+run the env script (tell the user what it does first — it reads names only,
+appends placeholders for anything missing, prints nothing secret):
 
-> "Proposed scope pattern:
-> `{ "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 }`
-> Use this? (yes / adjust / skip)"
+```bash
+node scripts/ensure-convit-env.mjs [path-to-project-root]
+```
 
-**Transversal Layers (Weight 5)**
+Config precedence, highest → lowest: `--model` flag > `.env.local` > `.env` >
+`.convitrc.json` > built-in defaults.
 
-> "Proposed scope pattern:
-> `{ "pattern": "ui/.*", "scope": "ui", "weight": 5 }`
-> Use this? (yes / adjust / skip)"
+## Generate `.convitrc.json`
 
-\*\*Auxiliary Support (Weight 3)"
+`.convitrc.json` is optional — convit works with zero config — but a tuned
+config makes scope detection accurate. The file captures **intent**: which
+directories are real scopes, what to exclude, and the formatting rules.
 
-> "Proposed scope pattern:
-> `{ "pattern": ".cursor/.*", "scope": "cursor", "weight": 3 }`
-> Use this? (yes / adjust / skip)"
+`convit init` ships a basic wizard. This skill does better: it reasons about the
+codebase from first principles (a **Hierarchy Principle** plus a weighting
+engine) to architect scope patterns, then confirms each with the user before
+writing. That logic is detailed — when the task is to generate or refine a
+config, **read [references/config-architecture.md](references/config-architecture.md)**
+and follow its five phases (Structural Analysis → Weighting → Synthesis → Ask →
+Write). For the exact meaning of every field, see
+[references/config-reference.md](references/config-reference.md).
 
-For each pattern, show the proposal and ask. If the user wants to adjust, ask
-for the corrected `pattern`, `scope`, or `weight`.
-
-### Exclude path prompts
-
-For each detected build/generated output:
-
-> "Found `dist/`. Add to exclude list? (yes / skip)"
-
-### Rules prompts
-
-Ask these three regardless of signals:
-
-1. "Max subject line length? (default: 50, range: 40–72)"
-2. "Min bullet points in commit body? (default: 1, range: 0–5)"
-3. "Max bullet line length? (default: 72, range: 60–100)"
-
-If the user accepts the default, omit that key from `rules`. convit uses
-defaults automatically — only write keys the user explicitly customized.
-
----
-
-## Phase 5 — Write
-
-Produce `.convitrc.json` at the project root with only the keys that have
-non-default or user-confirmed values. Shape must match exactly:
+A minimal example:
 
 ```json
 {
-  "rules": {
-    "maxSubjectLength": 50,
-    "maxBulletLength": 72,
-    "minBullets": 1
-  },
   "scopePatterns": [
     { "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 },
     { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 6 }
@@ -224,79 +120,44 @@ non-default or user-confirmed values. Shape must match exactly:
 }
 ```
 
-Rules:
+Write only keys the user customized — omit defaults, omit empty arrays, and omit
+`rules` entirely if no rule changed.
 
-- `temperature` is always omitted unless the user explicitly requests it (0.2 is
-  the default and rarely needs changing)
-- Empty arrays (`[]`) should be omitted entirely
-- `rules` should be omitted entirely if no rule was customized
-- Never add a `provider`, `apiKey`, `baseUrl`, or `model` key
+## Use convit
 
-After writing, print a summary of what was configured. Offer to run the env
-setup script, or remind the user to add these to `.env` or `.env.local`:
-
-**Optional:** Run the env setup script to append convit vars if missing.
-
-**Before running the script, tell the user explicitly:**
-
-> I will run the `ensure-convit-env.mjs` script. It reads your `.env` or `.env.local` to check which CONVIT\_\* var names exist (by name only). It does not read, store, or transmit any values — no keys, no URLs, no secrets. If vars are missing, it appends placeholder lines to the file. The script output may mention local vs cloud (inferred from URL pattern) but never prints the actual URL or any credentials. You can review the script source before I run it.
-
-Only run the script after the user has seen this disclosure and has not objected.
+Once a model is connected, the everyday flow is: **stage changes, then run
+convit.** It only ever looks at the staged diff.
 
 ```bash
-node .agents/skills/convit-setup/scripts/ensure-convit-env.mjs [path-to-project-root]
+git add <files>
+convit            # interactive: accept / regenerate / edit / cancel
 ```
 
-From project root, omit the path. The script checks `.env.local` first, then
-`.env`, and appends a dev-only block (with a box comment) that these vars
-should not be committed or uploaded. If the skill is installed globally, use
-the path to the skill's `scripts/` folder.
+Common flags (full behavior in [references/usage.md](references/usage.md)):
 
-Or add manually:
+- `convit --accept` — non-interactive; accept the first message that passes the
+  auto-accept gate, then commit. For CI / automation. Any secret match is a hard
+  block.
+- `convit --amend` — reword the previous commit (`git commit --amend`); folds in
+  anything currently staged.
+- `convit --candidates <n>` — generate N messages (default 3, max 5) and pick.
+- `convit --json` / `convit --print` — machine output on stdout (human chrome to
+  stderr); neither commits unless combined with `--accept`.
+- `convit --dry-run` / `--debug` / `--model <id>` / `--no-compress` — generate
+  without committing / dump the analysis / override the model / skip compression.
+- `convit init` — config wizard. `convit hook install` — a `prepare-commit-msg`
+  hook so a bare `git commit` opens pre-filled; it fails open and never blocks.
 
-```
-# Base URL of the OpenAI-compatible API — used for all LLM requests
-CONVIT_URL="https://api.openai.com/v1"
-# CONVIT_URL="http://localhost:1234/v1"   # LM Studio
-# CONVIT_URL="http://localhost:11434/v1"  # Ollama
+When committing **on the user's behalf**, prefer the interactive flow or show
+the message before `--accept` commits it. The commit **type** matters most — it
+drives semantic-version bumps downstream (`feat` → minor, `fix`/`perf` → patch,
+a `!` marker → breaking), so a wrong type silently mis-bumps a release.
 
-# API key — required for cloud providers (OpenAI, Anthropic). Omit for local models
-CONVIT_KEY="sk-..."
+## Where things live
 
-# Model ID — which model to call. Omit to auto-detect from LM Studio
-CONVIT_MODEL="gpt-4o-mini"
-# CONVIT_MODEL="llama-3.2-3b-instruct"  # local
-
-# Cost per 1M input tokens (USD) — enables cost display in terminal
-# CONVIT_INPUT_COST="0.15"
-
-# Cost per 1M output tokens (USD) — enables cost display in terminal
-# CONVIT_OUTPUT_COST="0.60"
-
-# Request timeout in ms — how long to wait for LLM response before aborting
-# CONVIT_TIMEOUT="60000"
-```
-
----
-
-## Example
-
-**Input:** Next.js app with `src/features/auth/`, `src/features/dashboard/`,
-`src/components/ui/`. Primary boundary: `src/`. Depth is 3 levels. Noise: `.next/`.
-
-**Output:**
-
-```json
-{
-  "scopePatterns": [
-    { "pattern": "src/features/([^/]+)/.*", "scope": "$1", "weight": 10 },
-    { "pattern": "src/components/ui/.*", "scope": "ui", "weight": 5 },
-    { "pattern": "src/([^/]+)/.*", "scope": "$1", "weight": 6 }
-  ],
-  "exclude": [".next/"]
-}
-```
-
-Primary boundary is `src/features/([^/]+)`. Transversal layer `components/ui/`
-gets fixed scope `ui`. Fallback `src/([^/]+)` catches files outside features.
-Noise excluded.
+| File                                | When to read it                                                                              |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| `references/config-architecture.md` | Generating or refining `.convitrc.json` — the Hierarchy Principle + 5-phase weighting engine |
+| `references/config-reference.md`    | The exact semantics of any `.convitrc.json` field                                            |
+| `references/usage.md`               | Flag-by-flag behavior, non-interactive output, the git hook                                  |
+| `scripts/ensure-convit-env.mjs`     | Safely check/scaffold `CONVIT_*` env-var names (never values)                                |

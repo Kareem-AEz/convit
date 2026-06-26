@@ -76,13 +76,13 @@ this minimum, it receives a `must_fix` hint with the exact count deficit.
 | **Type**    | `"conventional" \| "expressive"` |
 | **Default** | `"conventional"`                 |
 
-Selects the prompt persona — the *voice* convit asks the model to write in.
+Selects the prompt persona — the _voice_ convit asks the model to write in.
 Only the tone and the in-prompt examples change; the Conventional Commits
 format and the structural rules above are identical for both styles.
 
 - `"conventional"` (default) — a neutral, professional voice. Subjects and
   bodies read like standard Conventional Commits (`feat(auth): add rate
-  limiting to the login endpoint`). Best for shared, formal, or enterprise
+limiting to the login endpoint`). Best for shared, formal, or enterprise
   repositories.
 - `"expressive"` — opts into a builder/product voice that names UI feel
   ("buttery," "snappy") and labels temporary fixes a "band-aid"
@@ -92,7 +92,7 @@ format and the structural rules above are identical for both styles.
 
 **Precedence over commit history:** the chosen style sets the tone. When the
 repo has recent commits, convit still shows them to the model as
-*reference only* — to teach scope vocabulary and message structure — but
+_reference only_ — to teach scope vocabulary and message structure — but
 explicitly tells it not to copy their tone if it conflicts with the selected
 style. So `rules.style` always wins over the historical voice.
 
@@ -250,9 +250,9 @@ Controls how the final commit message is written.
 
 ### `commit.trailers`
 
-|             |                                                            |
-| ----------- | ---------------------------------------------------------- |
-| **Type**    | `string[]`                                                 |
+|             |                                                                     |
+| ----------- | ------------------------------------------------------------------- |
+| **Type**    | `string[]`                                                          |
 | **Default** | `["Generated-with: convit (https://github.com/Kareem-AEz/convit)"]` |
 
 Footer trailers appended below the commit body, after a blank line, just before
@@ -299,11 +299,11 @@ it, so installs without commitlint pay nothing.
 
 **Rules honored (v1):**
 
-| commitlint rule        | Effect in convit                                                        |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `type-enum`            | Restricts the commit types convit suggests/accepts to the allowed set   |
-| `subject-max-length`   | Tightens `rules.maxSubjectLength` (most-restrictive-wins)               |
-| `body-max-line-length` | Tightens `rules.maxBulletLength` (most-restrictive-wins)               |
+| commitlint rule        | Effect in convit                                                      |
+| ---------------------- | --------------------------------------------------------------------- |
+| `type-enum`            | Restricts the commit types convit suggests/accepts to the allowed set |
+| `subject-max-length`   | Tightens `rules.maxSubjectLength` (most-restrictive-wins)             |
+| `body-max-line-length` | Tightens `rules.maxBulletLength` (most-restrictive-wins)              |
 
 **Precedence:** most-restrictive-wins. For lengths, convit uses
 `min(your .convitrc value, the commitlint value)`. For types, convit emits only
