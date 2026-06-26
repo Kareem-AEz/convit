@@ -120,6 +120,14 @@ export interface UserConfig {
     minBullets?: number;
     temperature?: number;
     timeout?: number;
+    /**
+     * Prompt persona / tone. `"conventional"` (default) keeps a neutral,
+     * professional Conventional-Commits voice; `"expressive"` opts into the
+     * builder/slang persona ("buttery", "band-aid"). An unrecognized value
+     * falls back to `"conventional"`. The chosen style governs tone over the
+     * repo's recent-commit history (recent commits are reference-only).
+     */
+    style?: "conventional" | "expressive";
   };
   /** Globs or paths to exclude from analysis */
   exclude?: string[];

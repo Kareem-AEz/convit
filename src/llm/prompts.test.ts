@@ -98,6 +98,66 @@ test("buildPrompt: P2-T4 — a weak type hint is hedged toward the diff", () => 
   }
 });
 
+// P3-T3 — persona/style precedence.
+const SLANG_ANCHORS = ["buttery", "band-aid", "ghost scroll", "session rot"];
+
+test("buildPrompt: P3-T3 — default style (unset) is conventional, no slang persona", () => {
+  const prompt = buildPrompt(
+    makeContext("+small change"),
+    normalState,
+    "",
+    makeConfig(),
+    false,
+  );
+  for (const anchor of SLANG_ANCHORS) {
+    expect(prompt.system.toLowerCase()).not.toContain(anchor);
+  }
+  expect(prompt.system).toContain("professional Conventional Commit");
+});
+
+test("buildPrompt: P3-T3 — explicit conventional matches the default", () => {
+  const def = buildPrompt(
+    makeContext("+x"),
+    normalState,
+    "",
+    makeConfig(),
+    false,
+  );
+  const explicit = buildPrompt(
+    makeContext("+x"),
+    normalState,
+    "",
+    makeConfig({ userConfig: { rules: { style: "conventional" } } }),
+    false,
+  );
+  expect(explicit.system).toBe(def.system);
+});
+
+test("buildPrompt: P3-T3 — expressive style opts into the slang persona", () => {
+  const prompt = buildPrompt(
+    makeContext("+small change"),
+    normalState,
+    "",
+    makeConfig({ userConfig: { rules: { style: "expressive" } } }),
+    false,
+  );
+  for (const anchor of SLANG_ANCHORS) {
+    expect(prompt.system.toLowerCase()).toContain(anchor);
+  }
+});
+
+test("buildPrompt: P3-T3 — recent commits are reference-only, not a tone anchor", () => {
+  const prompt = buildPrompt(
+    makeContext("+small change"),
+    normalState,
+    "feat(core): do a thing\n\n- a bullet",
+    makeConfig(),
+    false,
+  );
+  expect(prompt.system).toContain("RECENT COMMITS");
+  expect(prompt.system).not.toContain("match this tone");
+});
+
 test("buildPrompt: a diff under the limit is not marked truncated", () => {
   const prompt = buildPrompt(
     makeContext("+small change"),

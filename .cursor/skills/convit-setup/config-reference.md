@@ -69,6 +69,35 @@ this minimum, it receives a `must_fix` hint with the exact count deficit.
 
 ---
 
+### `rules.style`
+
+|             |                                  |
+| ----------- | -------------------------------- |
+| **Type**    | `"conventional" \| "expressive"` |
+| **Default** | `"conventional"`                 |
+
+Selects the prompt persona — the *voice* convit asks the model to write in.
+Only the tone and the in-prompt examples change; the Conventional Commits
+format and the structural rules above are identical for both styles.
+
+- `"conventional"` (default) — a neutral, professional voice. Subjects and
+  bodies read like standard Conventional Commits (`feat(auth): add rate
+  limiting to the login endpoint`). Best for shared, formal, or enterprise
+  repositories.
+- `"expressive"` — opts into a builder/product voice that names UI feel
+  ("buttery," "snappy") and labels temporary fixes a "band-aid"
+  (`fix(tickets): kill the ghost scroll in the sidebar`). Good for solo or
+  product-focused repos that want commits with personality.
+- An unrecognized value falls back to `"conventional"`.
+
+**Precedence over commit history:** the chosen style sets the tone. When the
+repo has recent commits, convit still shows them to the model as
+*reference only* — to teach scope vocabulary and message structure — but
+explicitly tells it not to copy their tone if it conflicts with the selected
+style. So `rules.style` always wins over the historical voice.
+
+---
+
 ### `rules.temperature`
 
 |             |          |

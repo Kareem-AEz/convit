@@ -81,21 +81,26 @@ export function buildPrompt(
 
   const DIVIDER = "═".repeat(64);
 
-  let systemMessage = `Write commit messages for a builder who cares about clean logic and smooth UI.
+  // Persona / tone. The style setting governs the voice; an unrecognized value
+  // (or unset) falls back to the neutral "conventional" default. Only the intro
+  // line, the optional tone rules, and the example block vary — the format and
+  // the shared structural rules are identical across styles.
+  const style = rules.style === "expressive" ? "expressive" : "conventional";
 
-FORMAT: type(scope): subject
-
-TYPES: ${COMMIT_TYPES.join(", ")}
-
-RULES:
-- Subject: lowercase, imperative, max ${maxSubject} chars, no period.
+  const sharedRules = `- Subject: lowercase, imperative, max ${maxSubject} chars, no period.
 - Subject Tone: Direct and intentional. Avoid "update files" or "add code."
 - Body: ${minBullets}+ bullets starting with "- ", max ${maxBullet} chars each.
-- The "Why" Focus: Prioritize the reason for the change over the line of code.
-- Precision: If it's a UI change, mention the feel (e.g., "buttery," "snappy," "layout shift").
-- Technical Honesty: If it's a temporary fix, call it a "band-aid."
+- The "Why" Focus: Prioritize the reason for the change over the line of code.`;
 
-REFINED EXAMPLES:
+  const persona =
+    style === "expressive"
+      ? {
+          intro:
+            "Write commit messages for a builder who cares about clean logic and smooth UI.",
+          toneRules: `
+- Precision: If it's a UI change, mention the feel (e.g., "buttery," "snappy," "layout shift").
+- Technical Honesty: If it's a temporary fix, call it a "band-aid."`,
+          examples: `REFINED EXAMPLES:
 feat(auth): harden the login loop against session rot
 
 - tighten validation in use-auth to prevent flickering states
@@ -108,7 +113,37 @@ fix(tickets): kill the ghost scroll in the sidebar
 
 docs(readme): rewrite the vision for clarity
 
-- strip out the corporate fluff and focus on the builder's intent
+- strip out the corporate fluff and focus on the builder's intent`,
+        }
+      : {
+          intro: "Write clear, professional Conventional Commit messages.",
+          toneRules: "",
+          examples: `EXAMPLES (illustrative format only — never copy this wording):
+feat(auth): add rate limiting to the login endpoint
+
+- reject repeated failed attempts within a short window
+- return a clear error so the client can back off
+
+fix(parser): handle empty input without throwing
+
+- guard the tokenizer against a zero-length buffer
+- return an empty result instead of crashing
+
+docs(readme): clarify the setup steps
+
+- document the required environment variables`,
+        };
+
+  let systemMessage = `${persona.intro}
+
+FORMAT: type(scope): subject
+
+TYPES: ${COMMIT_TYPES.join(", ")}
+
+RULES:
+${sharedRules}${persona.toneRules}
+
+${persona.examples}
 
 Output ONLY the commit message. No code blocks or chatter.`;
 
@@ -121,7 +156,9 @@ INITIAL COMMIT: This repo has no commits yet. You are creating the first commit.
 - Scope: project name from package.json or directory, or omit. Not a module name like "config".
 - Bullets: summarize the project's purpose, key features, and structure.`;
   } else if (recentCommits) {
-    systemMessage += `\n\nRECENT COMMIT STYLE (match this tone and format):\n${recentCommits}`;
+    // Reference-only: the style rules above set the tone. Recent commits teach
+    // scope vocabulary and structure — do not copy their tone if it conflicts.
+    systemMessage += `\n\nRECENT COMMITS (reference for scope vocabulary and structure — follow the style and examples above; do not copy this tone if it conflicts):\n${recentCommits}`;
   }
 
   let userMessage = `Analyze the following git changes and create a commit message following the format rules.`;
