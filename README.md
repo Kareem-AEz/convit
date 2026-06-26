@@ -306,21 +306,31 @@ Config precedence: `--model` flag > env vars > `.convitrc` > built-in defaults.
 
 ## Convit Setup Skill (Cursor)
 
-The convit repo includes a Cursor Agent Skill that generates `.convitrc.json` from first principles. It scans your codebase, applies the Hierarchy Principle (Surgical Core, Functional Layers, Auxiliary Support), and proposes scope patterns, exclude paths, and rules. Total coverage: the config captures the entire repo, not just application code.
+The convit repo includes an Agent Skill (`convit-setup`) that onboards an AI agent to convit end-to-end — what convit is, how to install it and connect a model, how to architect a `.convitrc.json` from your codebase, and how to run convit to make commits. It uses progressive disclosure: a lean `SKILL.md` routes to `references/` for the deep config-architecture logic, full field semantics, and flag-by-flag usage.
 
 **Location:** `.cursor/skills/convit-setup/` (in this repo)
+
+```text
+convit-setup/
+├── SKILL.md                          # what convit is, install, configure, use
+├── references/
+│   ├── config-architecture.md        # Hierarchy Principle + 5-phase weighting engine
+│   ├── config-reference.md           # exact semantics of every .convitrc.json field
+│   └── usage.md                      # flag-by-flag behavior, --json/--print, the git hook
+└── scripts/ensure-convit-env.mjs     # safely scaffold CONVIT_* env-var names (never values)
+```
 
 **How to use:**
 
 1. Copy the skill into your agent's skills path (see table below).
 2. Open your project in the agent and start a chat.
-3. Ask the AI to set up convit. Example prompts:
+3. Ask the AI to set up or use convit. Example prompts:
    - "Set up convit for this project"
    - "Configure .convitrc with scope patterns for my codebase"
-   - "Run convit setup"
    - "Generate .convitrc.json from my project structure"
+   - "How do I commit with convit?" / "Commit these changes with convit"
 
-The skill runs a Full-Scan Protocol (every top-level directory), Gitignore Intelligence (respects `.gitignore`, proposes exclude candidates for build output), and groups proposed patterns into Primary Boundary, Transversal Layers, and Auxiliary Support. You confirm or adjust each proposal before it writes the config.
+When generating a config, the skill applies the **Hierarchy Principle** (Surgical Core, Functional Layers, Auxiliary Support) — a Full-Scan Protocol over every top-level directory plus Gitignore Intelligence (respects `.gitignore`, proposes exclude candidates for build output) — and groups proposed patterns into Primary Boundary, Transversal Layers, and Auxiliary Support. You confirm or adjust each proposal before it writes the config (full logic in `references/config-architecture.md`).
 
 Optionally, the skill can run `ensure-convit-env.mjs` to append missing `CONVIT_*` vars to `.env` (placeholder values only, no secrets).
 
@@ -334,7 +344,7 @@ Skills are agent-specific. Each agent system reads from its own skills directory
 | Codex                  | `$CODEX_HOME/skills/convit-setup/`                 |
 | Other (e.g. `.agents`) | `.agents/skills/convit-setup/` (at workspace root) |
 
-The skill triggers on: convit setup, .convitrc, commit scopes, convit init. Use Chat, Composer, or Agent mode. The agent loads the skill when your prompt matches those triggers and the skill is in the project's (or workspace's) skills path.
+The skill triggers on: convit setup, `.convitrc`, commit scopes, `convit init`, and using convit to commit (`--accept`, `--amend`, `--candidates`, the git hook). Use Chat, Composer, or Agent mode. The agent loads the skill when your prompt matches those triggers and the skill is in the project's (or workspace's) skills path.
 
 ---
 
@@ -393,7 +403,9 @@ Secrets go in `.env` only: `CONVIT_URL`, `CONVIT_KEY`, `CONVIT_MODEL`. Optional:
   ],
   "exclude": ["src/generated/prisma"],
   "commit": {
-    "trailers": ["Generated-with: convit (https://github.com/Kareem-AEz/convit)"]
+    "trailers": [
+      "Generated-with: convit (https://github.com/Kareem-AEz/convit)"
+    ]
   }
 }
 ```
