@@ -83,8 +83,19 @@ export function mapRules(
 ): CommitlintConstraints | null {
   const out: CommitlintConstraints = {};
 
+  // type-enum is the only mapped rule that becomes a HARD block in convit (the
+  // validator errors and `--accept` fails). Honor it only at error level (2): a
+  // warning-level enum does not *reject* the commit in the team's hook, and the
+  // feature's guarantee is "never emit what the hook rejects" — convit must not
+  // be stricter than commitlint itself. (Lengths stay level >= 1 below: they are
+  // advisory in convit, so mapping a warning never hard-blocks.)
   const typeEnum = rules["type-enum"];
-  if (isEnabled(typeEnum) && typeEnum[1] === "always" && Array.isArray(typeEnum[2])) {
+  if (
+    Array.isArray(typeEnum) &&
+    typeEnum[0] === 2 &&
+    typeEnum[1] === "always" &&
+    Array.isArray(typeEnum[2])
+  ) {
     const allowed = (typeEnum[2] as unknown[])
       .filter((t): t is string => typeof t === "string")
       .filter((t): t is CommitType =>

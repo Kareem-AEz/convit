@@ -47,7 +47,17 @@ test("mapRules: disabled (level 0) and 'never' rules are ignored", () => {
   ).toBeNull();
 });
 
-test("mapRules: warning-level rules still count (enabled is level >= 1)", () => {
+test("mapRules: a warning-level type-enum is NOT enforced (would be stricter than commitlint)", () => {
+  // type-enum hard-blocks in convit, so it is honored only at error level (2). A
+  // warn-level enum doesn't reject in the team's hook → convit must not either.
+  expect(mapRules({ "type-enum": [1, "always", ["feat", "fix"]] })).toBeNull();
+  // ...but an error-level enum IS enforced.
+  expect(mapRules({ "type-enum": [2, "always", ["feat", "fix"]] })).toEqual({
+    types: ["feat", "fix"],
+  });
+});
+
+test("mapRules: warning-level LENGTH rules still count (advisory, never hard-block)", () => {
   expect(mapRules({ "subject-max-length": [1, "always", 60] })).toEqual({
     maxSubjectLength: 60,
   });

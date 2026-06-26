@@ -252,6 +252,21 @@ function printDebugOutput(
   console.log(dim(classification.reasoning));
   console.log();
 
+  console.log(section("COMMITLINT"));
+  console.log(dim(SUB));
+  if (config.commitlint) {
+    const cl = config.commitlint;
+    console.log(
+      dim(
+        `  types: ${cl.types ? cl.types.join(", ") : "(unconstrained)"}` +
+          `  subjectMax: ${cl.maxSubjectLength ?? "—"}  bulletMax: ${cl.maxBulletLength ?? "—"}`,
+      ),
+    );
+  } else {
+    console.log(dim("  (no commitlint config detected — interop inactive)"));
+  }
+  console.log();
+
   console.log(section("COMPRESSION"));
   console.log(dim(SUB));
   console.log(

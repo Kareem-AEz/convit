@@ -283,6 +283,40 @@ validation, so a configured trailer never trips the format check.
 
 ---
 
+## commitlint interop (auto-detected)
+
+If your project has a [commitlint](https://commitlint.js.org/) config (`.commitlintrc*`,
+a `commitlint` key in `package.json`, etc.), convit reads it automatically and
+honors a subset of its rules — so the message convit produces won't be rejected
+by your existing `commit-msg` hook. There is **nothing to configure** in
+`.convitrc.json`; detection is automatic and **fail-open** (any error simply
+skips interop — it never blocks a commit).
+
+**Requirements:** `@commitlint/load` must be resolvable from your project (it
+ships with `@commitlint/cli`, so any project that has a commitlint setup already
+has it). convit declares it as an **optional peer dependency** and never bundles
+it, so installs without commitlint pay nothing.
+
+**Rules honored (v1):**
+
+| commitlint rule        | Effect in convit                                                        |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `type-enum`            | Restricts the commit types convit suggests/accepts to the allowed set   |
+| `subject-max-length`   | Tightens `rules.maxSubjectLength` (most-restrictive-wins)               |
+| `body-max-line-length` | Tightens `rules.maxBulletLength` (most-restrictive-wins)               |
+
+**Precedence:** most-restrictive-wins. For lengths, convit uses
+`min(your .convitrc value, the commitlint value)`. For types, convit emits only
+a type present in the `type-enum` (intersected with its own supported types).
+This guarantees convit never produces a message your team's hook then rejects.
+
+**Not honored:** `scope-enum` (convit derives scope from file paths, so enforcing
+an enum is invasive and low-value) and `header-max-length` (it constrains the
+whole `type(scope): subject` line, a different quantity than the subject length).
+Disabled rules (`level: 0`) and `never`-applicable rules are ignored.
+
+---
+
 ## Environment variables (not in config file)
 
 These are never read from `.convitrc.json`. Set them in `.env`.
