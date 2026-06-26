@@ -72,25 +72,21 @@ import {
 } from "../utils/git";
 import { isLocalUrl } from "../utils/url";
 
+/** The cheap, always-fresh git read: file list, raw diff, formatting-only set. */
+interface StagedRaw {
+  fileList: string[];
+  rawDiff: string;
+  formattingOnlyFiles: Set<string>;
+}
+
 /**
- * Fetches and fully enriches all staged git changes into a ready-to-use context.
- *
- * Pipeline:
- * 1. `git diff --cached --name-only` — fast file listing, excludes noisy files
- * 2. `git diff --cached --unified=3` — full diff with 3 lines of context
- * 3. `analyzeDiff` → per-file summaries with importance scoring
- * 4. `classifyChanges` → commit type + scope hints for the AI
- * 5. `collectPromptSecrets` → scan every static prompt source (diff, file paths,
- *    recent commits) before any API call
- * 6. `summarizeDiff` → compress if large, pass through if small
+ * The cheap half of `getStagedContext`: the three `git diff --cached` reads. This
+ * MUST run on every regenerate so a mid-session `git add` is honored — it is what
+ * the analysis cache is keyed against, never what it skips.
  *
  * @throws Error if no files are staged
  */
-async function getStagedContext(
-  config: Config,
-  recentCommits: string,
-  base?: string,
-): Promise<StagedContext> {
+function fetchStagedRaw(config: Config, base?: string): StagedRaw {
   const stagedFiles = getStagedFiles(config.exclude, undefined, base);
 
   if (!stagedFiles) {
@@ -101,15 +97,24 @@ async function getStagedContext(
     );
   }
 
-  const fileList = stagedFiles.split("\n");
+  return {
+    fileList: stagedFiles.split("\n"),
+    rawDiff: getStagedDiff(config.exclude, undefined, base),
+    formattingOnlyFiles: getFormattingOnlyFiles(config.exclude, undefined, base),
+  };
+}
 
-  const rawDiff = getStagedDiff(config.exclude, undefined, base);
-  const formattingOnlyFiles = getFormattingOnlyFiles(
-    config.exclude,
-    undefined,
-    base,
-  );
-
+/**
+ * The expensive, deterministic half: analyze → classify → secret-scan →
+ * compress. Pure with respect to its inputs (no I/O), so it is safe to memoize
+ * on the raw diff — identical diffs always yield an identical context.
+ */
+function analyzeStaged(
+  raw: StagedRaw,
+  recentCommits: string,
+  config: Config,
+): StagedContext {
+  const { fileList, rawDiff, formattingOnlyFiles } = raw;
   const diffSummary = analyzeDiff(rawDiff, fileList, formattingOnlyFiles);
   const classification = classifyChanges(diffSummary.files, rawDiff, config);
   // Scan the diff plus the other repo-derived text that reaches the model: file
@@ -131,6 +136,46 @@ async function getStagedContext(
     diffSummary,
     classification,
     sensitiveMatches,
+  };
+}
+
+/**
+ * Fetches and fully enriches all staged git changes into a ready-to-use context
+ * (cheap git reads + the deterministic analysis). The git-hook path uses this
+ * one-shot form; the interactive loop goes through {@link createAnalysisCache} so
+ * a plain regenerate reuses the analysis.
+ *
+ * @throws Error if no files are staged
+ */
+async function getStagedContext(
+  config: Config,
+  recentCommits: string,
+  base?: string,
+): Promise<StagedContext> {
+  return analyzeStaged(fetchStagedRaw(config, base), recentCommits, config);
+}
+
+/**
+ * Memoizes the expensive pre-analysis on the raw diff (P3-T5). Every call still
+ * re-reads the diff via {@link fetchStagedRaw} — so a mid-session `git add` is
+ * always honored — and only `analyzeStaged` is skipped when the diff is byte-for-
+ * byte identical to the last one analyzed (the common case: a plain regenerate).
+ * A changed diff misses the cache, so the secret scan and classification re-run.
+ *
+ * Keyed on `rawDiff`, which fully determines the analysis for a fixed config and
+ * recent-commit set (both constant within a session); `base` is constant per run.
+ */
+export function createAnalysisCache(
+  recentCommits: string,
+  config: Config,
+  base?: string,
+): () => StagedContext {
+  let cached: StagedContext | null = null;
+  return () => {
+    const raw = fetchStagedRaw(config, base);
+    if (cached && cached.rawDiff === raw.rawDiff) return cached;
+    cached = analyzeStaged(raw, recentCommits, config);
+    return cached;
   };
 }
 
@@ -552,12 +597,17 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   const recentCommits = config.amend ? getRecentCommits(3, 1) : getRecentCommits();
   const initialCommit = isInitialCommit();
 
+  // Re-reads the diff every call (honors a mid-session `git add`) but reuses the
+  // analysis when the diff is unchanged — so a plain regenerate skips re-classify
+  // / re-compress / re-scan. The hook path stays one-shot via getStagedContext.
+  const loadContext = createAnalysisCache(recentCommits, config, amendBase);
+
   printBanner();
 
   // -- INITIAL CONTEXT --
   let context: StagedContext;
   try {
-    context = await getStagedContext(config, recentCommits, amendBase);
+    context = loadContext();
   } catch (err) {
     cancel(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -789,7 +839,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         return;
       }
       try {
-        context = await getStagedContext(config, recentCommits, amendBase);
+        context = loadContext();
       } catch {
         // keep existing context if refresh fails
       }
@@ -972,7 +1022,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         : "Applying corrections...";
       console.log(pc.cyan(`\n${retryMsg}\n`));
       try {
-        context = await getStagedContext(config, recentCommits, amendBase);
+        context = loadContext();
       } catch {
         // keep existing context
       }
