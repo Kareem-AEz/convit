@@ -6,13 +6,11 @@
 // function that returns a BuiltPrompt — no I/O, no side effects.
 // =============================================================================
 
+import { MAX_DIFF_LENGTH, MIN_BULLETS, TEMPERATURE } from "../config/defaults";
 import {
-  MAX_BULLET_LENGTH,
-  MAX_DIFF_LENGTH,
-  MAX_SUBJECT_LENGTH,
-  MIN_BULLETS,
-  TEMPERATURE,
-} from "../config/defaults";
+  effectiveMaxBullet,
+  effectiveMaxSubject,
+} from "../config/commitlint";
 import {
   buildRefinementPrompt,
   generateCorrectionHints,
@@ -70,9 +68,13 @@ export function buildPrompt(
     .map((f) => f.path);
 
   const rules = config.userConfig.rules ?? {};
-  const maxSubject = rules.maxSubjectLength ?? MAX_SUBJECT_LENGTH;
-  const maxBullet = rules.maxBulletLength ?? MAX_BULLET_LENGTH;
+  const maxSubject = effectiveMaxSubject(config);
+  const maxBullet = effectiveMaxBullet(config);
   const minBullets = rules.minBullets ?? MIN_BULLETS;
+
+  // commitlint `type-enum` (P3-T4) narrows the types convit offers the model, so
+  // it never suggests one the team's hook rejects. Unconstrained → all types.
+  const allowedTypes = config.commitlint?.types ?? COMMIT_TYPES;
 
   const diffTruncated = processedDiff.length > MAX_DIFF_LENGTH;
   const diffPreview = diffTruncated
@@ -138,7 +140,7 @@ docs(readme): clarify the setup steps
 
 FORMAT: type(scope): subject
 
-TYPES: ${COMMIT_TYPES.join(", ")}
+TYPES: ${allowedTypes.join(", ")}
 
 RULES:
 ${sharedRules}${persona.toneRules}

@@ -16,6 +16,40 @@ test("detectCommitType: a test file votes test", () => {
   expect(type).toBe("test");
 });
 
+test("detectCommitType: P3-T4 — allowedTypes clamps the winner to the allowed set", () => {
+  // A docs file would score docs=5, but docs is not allowed → fall back to the
+  // in-set default (chore is allowed), never emitting a disallowed type.
+  const { type } = detectCommitType(
+    [makeFile({ path: "README.md", category: "docs", keyChanges: ["a"] })],
+    "",
+    ["feat", "fix", "chore"],
+  );
+  expect(type).toBe("chore");
+});
+
+test("detectCommitType: P3-T4 — picks the highest-scoring ALLOWED type over a disallowed one", () => {
+  // Both docs and test score 5; only docs is allowed → docs wins over test.
+  const { type } = detectCommitType(
+    [
+      makeFile({ path: "README.md", category: "docs", keyChanges: ["a"] }),
+      makeFile({ path: "src/x.test.ts", category: "test", keyChanges: ["a"] }),
+    ],
+    "",
+    ["docs", "chore"],
+  );
+  expect(type).toBe("docs");
+});
+
+test("classifyChanges: P3-T4 — respects commitlint.types from config", () => {
+  const config = makeConfig({ commitlint: { types: ["feat", "fix", "chore"] } });
+  const result = classifyChanges(
+    [makeFile({ path: "README.md", category: "docs", keyChanges: ["a"] })],
+    "",
+    config,
+  );
+  expect(result.type).toBe("chore");
+});
+
 test("detectCommitType: a docs file votes docs", () => {
   const { type } = detectCommitType(
     [makeFile({ path: "README.md", category: "docs", keyChanges: ["a"] })],

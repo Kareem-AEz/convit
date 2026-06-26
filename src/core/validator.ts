@@ -9,15 +9,15 @@
 // Pure functions — no I/O, no side effects.
 // =============================================================================
 
+import { MIN_BULLETS, RETRY_TEMPERATURES } from "../config/defaults";
 import {
-  MAX_BULLET_LENGTH,
-  MAX_SUBJECT_LENGTH,
-  MIN_BULLETS,
-  RETRY_TEMPERATURES,
-} from "../config/defaults";
+  effectiveMaxBullet,
+  effectiveMaxSubject,
+} from "../config/commitlint";
 import {
   COMMIT_TYPES,
   HEADER_RE,
+  type CommitType,
   type Config,
   type CorrectionHint,
   type ValidationResult,
@@ -59,8 +59,8 @@ export function generateCorrectionHints(
   const lines = message.split("\n").filter((l) => l.trim());
 
   const rules = config.userConfig.rules ?? {};
-  const maxSubject = rules.maxSubjectLength ?? MAX_SUBJECT_LENGTH;
-  const maxBullet = rules.maxBulletLength ?? MAX_BULLET_LENGTH;
+  const maxSubject = effectiveMaxSubject(config);
+  const maxBullet = effectiveMaxBullet(config);
   const minBullets = rules.minBullets ?? MIN_BULLETS;
 
   if (lines.length === 0) return corrections;
@@ -123,6 +123,16 @@ export function generateCorrectionHints(
       issue: "invalid_format",
       description: "First line doesn't match conventional commit format",
       suggestion: `Use format: type(scope): subject — scope is optional and type is one of ${COMMIT_TYPES.join("/")}.`,
+      priority: "must_fix",
+    });
+  } else if (!isTypeAllowed(firstLine, config)) {
+    // The format is valid but the type is outside the project's commitlint
+    // `type-enum` (P3-T4) — must_fix, since the team's hook would reject it.
+    const allowed = config.commitlint!.types!;
+    corrections.push({
+      issue: "invalid_type",
+      description: `Type "${headerType(firstLine)}" is not in the commitlint type-enum`,
+      suggestion: `Use one of the allowed types: ${allowed.join("/")}.`,
       priority: "must_fix",
     });
   }
@@ -208,8 +218,8 @@ export function validateCommitMessage(
   const lines = message.split("\n").filter((l) => l.trim());
 
   const rules = config.userConfig.rules ?? {};
-  const maxSubject = rules.maxSubjectLength ?? MAX_SUBJECT_LENGTH;
-  const maxBullet = rules.maxBulletLength ?? MAX_BULLET_LENGTH;
+  const maxSubject = effectiveMaxSubject(config);
+  const maxBullet = effectiveMaxBullet(config);
   const minBullets = rules.minBullets ?? MIN_BULLETS;
 
   if (lines.length === 0) {
@@ -241,6 +251,14 @@ export function validateCommitMessage(
   const firstLine = lines[0];
   if (!HEADER_RE.test(firstLine)) {
     errors.push("First line must match: type(scope): subject (scope optional)");
+  } else if (!isTypeAllowed(firstLine, config)) {
+    // Format is valid but the type violates the project's commitlint type-enum
+    // (P3-T4) — a hard error, since the team's commit-msg hook would reject it.
+    errors.push(
+      `Type "${headerType(firstLine)}" is not allowed by commitlint (allowed: ${config.commitlint!.types!.join(
+        ", ",
+      )})`,
+    );
   }
 
   const subjectMatch = firstLine.match(/:\s*(.+)$/);
@@ -274,4 +292,22 @@ export function validateCommitMessage(
   });
 
   return { isValid: errors.length === 0, errors, warnings };
+}
+
+/** Extracts the commit type from a header line, or `null` if it doesn't match. */
+function headerType(firstLine: string): string | null {
+  const m = firstLine.match(HEADER_RE);
+  return m ? m[1] : null;
+}
+
+/**
+ * True unless the project's commitlint `type-enum` (P3-T4) is set AND the
+ * header's type is outside it. Unconstrained (no commitlint, no type-enum) is
+ * always allowed; a header that doesn't parse is left to the format check.
+ */
+function isTypeAllowed(firstLine: string, config: Config): boolean {
+  const allowed = config.commitlint?.types;
+  if (!allowed) return true;
+  const type = headerType(firstLine);
+  return type === null || allowed.includes(type as CommitType);
 }

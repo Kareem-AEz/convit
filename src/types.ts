@@ -202,6 +202,23 @@ export interface ValidationResult {
 }
 
 /** Runtime configuration parsed from env vars and CLI args */
+/**
+ * Constraints mapped from a project's commitlint config (P3-T4). Loaded lazily
+ * at runtime when `@commitlint/load` resolves from the user's cwd and a config
+ * is present; absent otherwise. Most-restrictive-wins against convit's own
+ * config: `types` is intersected with `COMMIT_TYPES` (non-empty when set) and
+ * the lengths combine with convit's via `Math.min` — so convit never emits a
+ * message the team's commit-msg hook would then reject.
+ */
+export interface CommitlintConstraints {
+  /** Allowed types from `type-enum`, intersected with `COMMIT_TYPES`. */
+  types?: CommitType[];
+  /** Subject char limit from `subject-max-length`. */
+  maxSubjectLength?: number;
+  /** Body-line char limit from `body-max-line-length`. */
+  maxBulletLength?: number;
+}
+
 export interface Config {
   apiUrl: string;
   apiKey: string;
@@ -236,6 +253,12 @@ export interface Config {
    * means no trailers.
    */
   trailers: string[];
+  /**
+   * Constraints from the project's commitlint config, or `undefined` when none
+   * applies. Populated asynchronously at the top of the run (after `getConfig`,
+   * which is sync) — see `loadCommitlintConstraints`.
+   */
+  commitlint?: CommitlintConstraints;
 }
 
 /** Mutable state for the interactive retry loop */

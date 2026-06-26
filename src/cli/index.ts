@@ -32,6 +32,7 @@ import {
   text,
 } from "../cli/ui";
 import { MAX_FILES_FULL_QUALITY, MAX_RETRY_ATTEMPTS } from "../config/defaults";
+import { loadCommitlintConstraints } from "../config/commitlint";
 import { evaluateAutoAcceptGate, evaluateSensitiveAcceptGate } from "./gates";
 import { classifyChanges } from "../core/classifier";
 import { analyzeDiff, summarizeDiff } from "../core/parser";
@@ -378,6 +379,11 @@ export async function runHook(
       .some((l) => l.trim() && !l.trim().startsWith("#"));
     if (hasMessage) return;
 
+    // commitlint interop (P3-T4) — same fail-open async load as the loop, before
+    // classification. The whole hook is already wrapped in fail-open try/catch.
+    config.commitlint =
+      (await loadCommitlintConstraints(process.cwd())) ?? undefined;
+
     const recentCommits = getRecentCommits();
     const context = await getStagedContext(config, recentCommits);
     if (context.fileList.length === 0) return; // nothing staged → let git handle it
@@ -477,6 +483,12 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     cancel(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
+
+  // -- COMMITLINT INTEROP (P3-T4) --
+  // Async, so it can't run in the sync getConfig(); fail-open (returns null on
+  // any error). Must precede getStagedContext → classifyChanges, which reads it.
+  config.commitlint =
+    (await loadCommitlintConstraints(process.cwd())) ?? undefined;
 
   // -- PROVIDER SETUP --
   const { model, modelName } = await createModel(config);

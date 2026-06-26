@@ -35,6 +35,37 @@ test("validateCommitMessage rejects a non-conventional first line", () => {
   );
 });
 
+test("validateCommitMessage: P3-T4 — a type outside commitlint type-enum is a hard error", () => {
+  const config = makeConfig({ commitlint: { types: ["feat", "fix", "chore"] } });
+  const result = validateCommitMessage(
+    "perf(core): speed up the parser\n\n- memoize the tokenizer",
+    config,
+  );
+  expect(result.isValid).toBe(false);
+  expect(result.errors.some((e) => e.includes("not allowed by commitlint"))).toBe(
+    true,
+  );
+});
+
+test("validateCommitMessage: P3-T4 — an allowed type passes the enum gate", () => {
+  const config = makeConfig({ commitlint: { types: ["feat", "fix", "chore"] } });
+  const result = validateCommitMessage(
+    "fix(core): guard against null input\n\n- return early",
+    config,
+  );
+  expect(result.isValid).toBe(true);
+});
+
+test("generateCorrectionHints: P3-T4 — a disallowed type yields a must_fix invalid_type hint", () => {
+  const config = makeConfig({ commitlint: { types: ["feat", "fix", "chore"] } });
+  const hints = generateCorrectionHints(
+    "perf(core): speed up the parser\n\n- memoize it",
+    config,
+  );
+  const hint = hints.find((h) => h.issue === "invalid_type");
+  expect(hint?.priority).toBe("must_fix");
+});
+
 test("validateCommitMessage flags a literal copied example", () => {
   // Asserts the example is *flagged* without binding to errors-vs-warnings:
   // the Phase-1 quick win moves this check from errors → warnings (so isValid

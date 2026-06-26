@@ -110,6 +110,7 @@ function formatRuleContribution(
 export function detectCommitType(
   files: FileSummary[],
   diff: string,
+  allowedTypes?: readonly CommitType[],
 ): {
   type: CommitType;
   scores: Record<CommitType, number>;
@@ -284,10 +285,23 @@ export function detectCommitType(
   // Walk types in an explicit precedence order (not the scores-object key order)
   // so equal scores resolve deterministically and intentionally. `> maxScore`
   // means the first type in TYPE_TIE_BREAK_ORDER to reach the max wins the tie.
-  let maxScore = 0;
-  let detectedType: CommitType = "chore";
+  //
+  // When commitlint constrains the allowed types (P3-T4), restrict the walk to
+  // that set so convit never emits a type the team's hook would reject. The
+  // candidate list is non-empty (the loader drops an empty intersection), so the
+  // fallback is always an allowed type; "chore" stays the default only when it
+  // is itself allowed (or unconstrained).
+  const candidates =
+    allowedTypes && allowedTypes.length > 0
+      ? TYPE_TIE_BREAK_ORDER.filter((t) => allowedTypes.includes(t))
+      : TYPE_TIE_BREAK_ORDER;
 
-  for (const type of TYPE_TIE_BREAK_ORDER) {
+  let maxScore = 0;
+  let detectedType: CommitType = candidates.includes("chore")
+    ? "chore"
+    : candidates[0];
+
+  for (const type of candidates) {
     if (scores[type] > maxScore) {
       maxScore = scores[type];
       detectedType = type;
@@ -513,7 +527,11 @@ export function classifyChanges(
   diff: string,
   config: Config,
 ): ChangeClassification {
-  const { type, scores, breakdowns } = detectCommitType(files, diff);
+  const { type, scores, breakdowns } = detectCommitType(
+    files,
+    diff,
+    config.commitlint?.types,
+  );
   // Compile once so an invalid user pattern warns a single time, not per detector.
   const compiledPatterns = compileScopePatterns(config);
   const { scope, scopeSources } = detectPrimaryScope(
