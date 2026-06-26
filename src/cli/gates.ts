@@ -61,3 +61,41 @@ export function evaluateAutoAcceptGate(
   }
   return { ok: true };
 }
+
+/** One option for the `--candidates` picker: its index plus display strings. */
+export interface CandidateOption {
+  value: number;
+  label: string;
+  hint: string;
+}
+
+/**
+ * Index of the candidate to auto-select in non-interactive `--candidates` mode:
+ * the first that passes {@link evaluateAutoAcceptGate} (the same gate the commit
+ * then faces, so a winnable batch isn't failed by an earlier truncated/invalid
+ * candidate). Falls back to the first candidate when none pass — the gate will
+ * still block the commit, but the choice is deterministic.
+ */
+export function pickAcceptableCandidate(results: GenerateResult[]): number {
+  const idx = results.findIndex((r) => evaluateAutoAcceptGate(r).ok);
+  return idx >= 0 ? idx : 0;
+}
+
+/**
+ * Shapes generated candidates into clack `select` options (pure, so the picker's
+ * data can be unit-tested while the `select` call stays thin glue). The label is
+ * the subject line; the hint surfaces the temperature and any validity/truncation
+ * caveat so the user can weigh a looser candidate against a flagged one.
+ */
+export function buildCandidateOptions(
+  results: GenerateResult[],
+): CandidateOption[] {
+  return results.map((r, i) => {
+    const caveats = [
+      r.validation.isValid ? null : "invalid format",
+      r.wasTruncated ? "truncated" : null,
+    ].filter(Boolean);
+    const hint = [`temp ${r.temperature}`, ...caveats].join(" · ");
+    return { value: i, label: r.message.split("\n")[0], hint };
+  });
+}

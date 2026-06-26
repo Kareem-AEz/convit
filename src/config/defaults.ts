@@ -96,6 +96,12 @@ export const DEFAULT_TIMEOUT_MS = 60_000;
 /** Temperature steps per retry — increases variety on each attempt */
 export const RETRY_TEMPERATURES = [0.2, 0.3, 0.4];
 
+/** Upper bound on `--candidates <n>` — each candidate is a full generation. */
+export const MAX_CANDIDATES = 5;
+
+/** Candidate count for a bare `--candidates` (no number). */
+export const DEFAULT_CANDIDATES = 3;
+
 export const SOURCE_EXTENSIONS = [
   ".ts",
   ".tsx",

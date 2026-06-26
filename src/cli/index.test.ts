@@ -11,6 +11,7 @@ const result = {
   durationMs: 9000,
   tokensFromApi: true,
   wasTruncated: false,
+  temperature: 0.2,
 } satisfies GenerateResult;
 
 const context = {

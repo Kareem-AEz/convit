@@ -33,7 +33,12 @@ import {
 } from "../cli/ui";
 import { MAX_FILES_FULL_QUALITY, MAX_RETRY_ATTEMPTS } from "../config/defaults";
 import { loadCommitlintConstraints } from "../config/commitlint";
-import { evaluateAutoAcceptGate, evaluateSensitiveAcceptGate } from "./gates";
+import {
+  buildCandidateOptions,
+  evaluateAutoAcceptGate,
+  evaluateSensitiveAcceptGate,
+  pickAcceptableCandidate,
+} from "./gates";
 import { classifyChanges } from "../core/classifier";
 import { analyzeDiff, summarizeDiff } from "../core/parser";
 import {
@@ -44,6 +49,7 @@ import {
 import {
   appendTrailers,
   expandTrailers,
+  generateCandidates,
   generateCommit,
 } from "../llm/generator";
 import { buildPrompt } from "../llm/prompts";
@@ -327,7 +333,7 @@ function printDebugOutput(
   console.log(dim(`  Model: ${config.model ?? "(auto-detect)"}`));
   console.log(
     dim(
-      `  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}  amend: ${config.amend}`,
+      `  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}  amend: ${config.amend}  candidates: ${config.candidates}`,
     ),
   );
   console.log(dim(`  estimatedInputTokens: ~${prompt.estimatedInputTokens}`));
@@ -723,7 +729,46 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     // -- GENERATE (errors are recoverable) --
     let result: GenerateResult;
     try {
-      result = await generateCommit(model, prompt, modelName, config);
+      // `--candidates n` (n>1) only fires on the first pass (mode "normal"); a
+      // subsequent regenerate/edit goes back to a single generation so the user
+      // isn't re-picking from a fresh batch each round.
+      if (config.candidates > 1 && state.mode === "normal") {
+        const batch = await generateCandidates(
+          model,
+          prompt,
+          modelName,
+          config,
+          config.candidates,
+        );
+        let chosen: number;
+        if (nonInteractive) {
+          chosen = pickAcceptableCandidate(batch);
+        } else {
+          const picked = await select({
+            message: `Pick a candidate (${batch.length} generated)`,
+            options: buildCandidateOptions(batch),
+          });
+          if (isCancel(picked)) {
+            cancel("Cancelled");
+            return;
+          }
+          chosen = picked as number;
+        }
+        // Aggregate tokens/time across the whole batch so the cost readout and
+        // the `--json` payload reflect true spend (N generations), while keeping
+        // the picked candidate's message/validation as the result.
+        const sum = (pick: (r: GenerateResult) => number) =>
+          batch.reduce((acc, r) => acc + pick(r), 0);
+        result = {
+          ...batch[chosen],
+          inputTokens: sum((r) => r.inputTokens),
+          outputTokens: sum((r) => r.outputTokens),
+          durationMs: sum((r) => r.durationMs),
+          tokensFromApi: batch.every((r) => r.tokensFromApi),
+        };
+      } else {
+        result = await generateCommit(model, prompt, modelName, config);
+      }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       // Non-interactive modes (--accept/--json/--print) must fail closed: never

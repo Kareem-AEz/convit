@@ -2,6 +2,7 @@ import { test, expect } from "vitest";
 
 import {
   generateCorrectionHints,
+  getCandidateTemperature,
   getRetryTemperature,
   validateCommitMessage,
 } from "./validator";
@@ -16,6 +17,18 @@ test("getRetryTemperature steps up then clamps to the last value", () => {
   expect(getRetryTemperature(99)).toBe(
     RETRY_TEMPERATURES[RETRY_TEMPERATURES.length - 1],
   );
+});
+
+test("getCandidateTemperature follows the ladder, then climbs past 0.4, capped at 0.7", () => {
+  // First three follow RETRY_TEMPERATURES exactly.
+  expect(getCandidateTemperature(0)).toBe(0.2);
+  expect(getCandidateTemperature(1)).toBe(0.3);
+  expect(getCandidateTemperature(2)).toBe(0.4);
+  // Then +0.1 per step — intentionally past the 0.4 retry ceiling.
+  expect(getCandidateTemperature(3)).toBeCloseTo(0.5);
+  expect(getCandidateTemperature(4)).toBeCloseTo(0.6);
+  // Cap holds for any larger index.
+  expect(getCandidateTemperature(99)).toBe(0.7);
 });
 
 test("validateCommitMessage accepts a well-formed message", () => {

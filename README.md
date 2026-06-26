@@ -347,6 +347,7 @@ convit hook install     install a prepare-commit-msg git hook
 convit hook uninstall   remove the convit git hook
 convit --accept         auto-accept first valid message (CI / automation)
 convit --amend          reword HEAD (git commit --amend); folds in staged changes
+convit --candidates <n> generate N messages and pick one (default 3, max 5)
 convit --json           emit one JSON object to stdout (chrome → stderr)
 convit --print          emit just the message to stdout (chrome → stderr)
 convit --debug          print prompt, DiffSummary, classification, full scorecard

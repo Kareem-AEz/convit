@@ -19,7 +19,7 @@ import {
   type LanguageModel,
 } from "ai";
 import { BRAILLE_SPINNER_FRAMES, pc, spinner } from "../cli/ui";
-import { validateCommitMessage } from "../core/validator";
+import { getCandidateTemperature, validateCommitMessage } from "../core/validator";
 import { COMMIT_TYPES, HEADER_RE } from "../types";
 import type { BuiltPrompt, Config, GenerateResult } from "../types";
 
@@ -342,6 +342,7 @@ async function generateStructured(
     durationMs: Date.now() - startTime,
     tokensFromApi,
     wasTruncated: false,
+    temperature: prompt.temperature,
   };
 }
 
@@ -373,6 +374,45 @@ export async function generateCommit(
     }
   }
   return generateFreeText(model, prompt, modelName, config);
+}
+
+/**
+ * Generates `n` candidate messages in one round (`--candidates`), each at a
+ * stepped temperature ({@link getCandidateTemperature}) for variety. The prompt
+ * is cloned per candidate with only the temperature overridden — no other state
+ * changes — so the candidates differ in phrasing, not in what they describe.
+ *
+ * Resilient to a single bad generation: a candidate that throws (timeout, etc.)
+ * is skipped and the round continues. If *every* candidate fails, the last error
+ * propagates so the loop's recoverable-error handler can offer a retry.
+ */
+export async function generateCandidates(
+  model: LanguageModel,
+  prompt: BuiltPrompt,
+  modelName: string,
+  config: Config,
+  n: number,
+): Promise<GenerateResult[]> {
+  const results: GenerateResult[] = [];
+  let lastError: unknown;
+  for (let i = 0; i < n; i++) {
+    const temperature = getCandidateTemperature(i);
+    console.log(pc.dim(`\nCandidate ${i + 1}/${n} · temp ${temperature}`));
+    try {
+      results.push(
+        await generateCommit(model, { ...prompt, temperature }, modelName, config),
+      );
+    } catch (err) {
+      lastError = err;
+      console.log(pc.yellow(`Candidate ${i + 1} failed — skipping.`));
+    }
+  }
+  if (results.length === 0) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError ?? "All candidates failed to generate."));
+  }
+  return results;
 }
 
 /**
@@ -485,5 +525,6 @@ async function generateFreeText(
     durationMs,
     tokensFromApi,
     wasTruncated,
+    temperature: prompt.temperature,
   };
 }

@@ -41,6 +41,21 @@ export function getRetryTemperature(
 }
 
 /**
+ * Temperature for the i-th candidate (0-indexed) in `--candidates` mode. Follows
+ * the `RETRY_TEMPERATURES` ladder (0.2, 0.3, 0.4), then keeps climbing +0.1 per
+ * step to spread variety across more candidates, capped at 0.7 to stay coherent.
+ *
+ * Intentionally goes past the retry path's 0.4 ceiling: picking the best of a
+ * diverse set tolerates a looser tail in a way an auto-retry doesn't — don't
+ * clamp this back to 0.4.
+ */
+export function getCandidateTemperature(index: number): number {
+  const last = RETRY_TEMPERATURES.length - 1;
+  if (index <= last) return RETRY_TEMPERATURES[index];
+  return Math.min(0.7, RETRY_TEMPERATURES[last] + (index - last) * 0.1);
+}
+
+/**
  * Analyzes a previously generated commit message and produces structured
  * correction hints for the next retry attempt.
  *

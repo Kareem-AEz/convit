@@ -1,4 +1,10 @@
-import { DEFAULT_TIMEOUT_MS, DEFAULT_TRAILERS, EXCLUDED_FILES } from "./defaults";
+import {
+  DEFAULT_CANDIDATES,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_TRAILERS,
+  EXCLUDED_FILES,
+  MAX_CANDIDATES,
+} from "./defaults";
 import { cosmiconfigSync } from "cosmiconfig";
 import { pc } from "../cli/ui";
 import { isLocalUrl } from "../utils/url";
@@ -12,6 +18,22 @@ import type { Config, UserConfig } from "../types";
 export function parseCost(raw: string | undefined): number {
   const n = parseFloat(raw ?? "0");
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Resolves `--candidates <n>` to a candidate count. Absent → 1 (feature off).
+ * Bare `--candidates` (no following number) → `DEFAULT_CANDIDATES`. A given
+ * number clamps to `[1, MAX_CANDIDATES]`; a non-numeric value falls back to the
+ * default. Exposed for unit testing the parse/clamp boundaries.
+ */
+export function parseCandidates(args: string[]): number {
+  const idx = args.indexOf("--candidates");
+  if (idx === -1) return 1;
+  const raw = args[idx + 1];
+  if (raw === undefined || raw.startsWith("--")) return DEFAULT_CANDIDATES;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_CANDIDATES;
+  return Math.min(MAX_CANDIDATES, Math.max(1, parsed));
 }
 
 /**
@@ -37,6 +59,11 @@ export function getConfig(): Config {
   const cliModelOverride =
     modelIdx !== -1 && args[modelIdx + 1] ? args[modelIdx + 1] : undefined;
 
+  // `--candidates <n>` → generate N messages and pick. Bare `--candidates`
+  // (no number) uses DEFAULT_CANDIDATES; values clamp to [1, MAX_CANDIDATES].
+  // 1 disables the feature.
+  const candidates = parseCandidates(args);
+
   // 1. Load User Configuration via cosmiconfig
   const explorer = cosmiconfigSync("convit");
   const searchResult = explorer.search();
@@ -60,6 +87,7 @@ export function getConfig(): Config {
     noCompress,
     accept,
     amend,
+    candidates,
     debug,
     structured,
     json,

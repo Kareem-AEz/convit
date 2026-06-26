@@ -235,6 +235,13 @@ export interface Config {
    * changes are folded into the amended commit and covered by the new message.
    */
   amend: boolean;
+  /**
+   * Number of candidate messages to generate in one round (`--candidates <n>`).
+   * 1 disables the feature (the default). Interactive runs show a picker; in
+   * non-interactive modes the first candidate that passes the auto-accept gate is
+   * chosen. Each candidate is a full generation at a stepped temperature.
+   */
+  candidates: number;
   debug: boolean;
   /**
    * Machine-output modes (non-interactive, like `accept`). `json` emits one JSON
@@ -300,6 +307,8 @@ export interface GenerateResult {
   tokensFromApi: boolean;
   /** True when the stream was interrupted mid-output and content was salvaged. */
   wasTruncated: boolean;
+  /** The sampling temperature this message was generated at (for candidate hints). */
+  temperature: number;
 }
 
 /** A fully assembled prompt ready for the AI */
