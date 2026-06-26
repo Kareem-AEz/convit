@@ -21,6 +21,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     dryRun: false,
     noCompress: false,
     accept: false,
+    amend: false,
     debug: false,
     structured: true,
     json: false,

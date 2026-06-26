@@ -228,6 +228,13 @@ export interface Config {
   dryRun: boolean;
   noCompress: boolean;
   accept: boolean;
+  /**
+   * Reword the previous commit (`git commit --amend`) instead of creating a fresh
+   * one. The message is regenerated from `git diff --cached HEAD~1` — the index
+   * compared to HEAD's parent — so a clean tree rewords HEAD as-is, while staged
+   * changes are folded into the amended commit and covered by the new message.
+   */
+  amend: boolean;
   debug: boolean;
   /**
    * Machine-output modes (non-interactive, like `accept`). `json` emits one JSON

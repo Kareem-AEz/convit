@@ -27,6 +27,7 @@ export function getConfig(): Config {
   const dryRun = args.includes("--dry-run");
   const noCompress = args.includes("--no-compress");
   const accept = args.includes("--accept");
+  const amend = args.includes("--amend");
   const debug = args.includes("--debug");
   const structured = !args.includes("--no-structured");
   const json = args.includes("--json");
@@ -58,6 +59,7 @@ export function getConfig(): Config {
     dryRun,
     noCompress,
     accept,
+    amend,
     debug,
     structured,
     json,

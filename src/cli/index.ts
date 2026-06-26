@@ -60,6 +60,7 @@ import {
   getRecentCommits,
   getStagedDiff,
   getStagedFiles,
+  hasParentCommit,
   isInitialCommit,
   verifyGitRepo,
 } from "../utils/git";
@@ -82,19 +83,26 @@ import { isLocalUrl } from "../utils/url";
 async function getStagedContext(
   config: Config,
   recentCommits: string,
+  base?: string,
 ): Promise<StagedContext> {
-  const stagedFiles = getStagedFiles(config.exclude);
+  const stagedFiles = getStagedFiles(config.exclude, undefined, base);
 
   if (!stagedFiles) {
     throw new Error(
-      "No staged changes found. Stage files with: git add <files>",
+      base
+        ? "Nothing to amend — the target commit is empty."
+        : "No staged changes found. Stage files with: git add <files>",
     );
   }
 
   const fileList = stagedFiles.split("\n");
 
-  const rawDiff = getStagedDiff(config.exclude);
-  const formattingOnlyFiles = getFormattingOnlyFiles(config.exclude);
+  const rawDiff = getStagedDiff(config.exclude, undefined, base);
+  const formattingOnlyFiles = getFormattingOnlyFiles(
+    config.exclude,
+    undefined,
+    base,
+  );
 
   const diffSummary = analyzeDiff(rawDiff, fileList, formattingOnlyFiles);
   const classification = classifyChanges(diffSummary.files, rawDiff, config);
@@ -123,11 +131,13 @@ async function getStagedContext(
 /**
  * Where a finalized commit message is written.
  * - `commit`: run `git commit` (the interactive default).
+ * - `amend`: run `git commit --amend` — reword HEAD, folding in any staged changes.
  * - `file`: write to a path (the git-hook path) — convit's message is prepended
  *   above `existing` (git's comment/diff block) so the user still sees it.
  */
 type WriteTarget =
   | { kind: "commit" }
+  | { kind: "amend" }
   | { kind: "file"; path: string; existing: string };
 
 /**
@@ -161,8 +171,11 @@ async function commitOrDryRun(
     return;
   }
 
+  const amend = target.kind === "amend";
+
   if (config.dryRun) {
-    note(`Would commit: ${finalMessage.split("\n")[0]}`, "Dry-run");
+    const verb = amend ? "amend" : "commit";
+    note(`Would ${verb}: ${finalMessage.split("\n")[0]}`, "Dry-run");
     return;
   }
 
@@ -172,11 +185,11 @@ async function commitOrDryRun(
     // in machine-output mode route git's stdout to the real stderr fd (2) to keep
     // stdout a clean JSON/message channel.
     const machineOutput = config.json || config.print;
-    execFileSync("git", ["commit", "-F-"], {
+    execFileSync("git", amend ? ["commit", "--amend", "-F-"] : ["commit", "-F-"], {
       input: finalMessage,
       stdio: ["pipe", machineOutput ? 2 : "inherit", "inherit"],
     });
-    outro("Committed successfully");
+    outro(amend ? "Amended successfully" : "Committed successfully");
   } catch (err) {
     cancel(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -313,7 +326,9 @@ function printDebugOutput(
   console.log(dim(`  URL: ${config.apiUrl}`) + urlNote);
   console.log(dim(`  Model: ${config.model ?? "(auto-detect)"}`));
   console.log(
-    dim(`  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}`),
+    dim(
+      `  dryRun: ${config.dryRun}  noCompress: ${config.noCompress}  amend: ${config.amend}`,
+    ),
   );
   console.log(dim(`  estimatedInputTokens: ~${prompt.estimatedInputTokens}`));
   console.log();
@@ -499,6 +514,25 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
     process.exit(1);
   }
 
+  // -- AMEND GATE (P3-T5) --
+  // `--amend` rewords HEAD. It needs a HEAD with a parent to diff against
+  // (`git diff --cached HEAD~1`); refuse on an empty repo or the root commit
+  // rather than fabricate an empty-tree base.
+  if (config.amend && !hasParentCommit()) {
+    cancel(
+      isInitialCommit()
+        ? "Nothing to amend — no commits yet."
+        : "Cannot amend the root commit (it has no parent to diff against).",
+    );
+    process.exit(1);
+  }
+  // The diff context for amend is the index compared to HEAD's parent — exactly
+  // what the amended commit will represent. Undefined (→ HEAD) for a normal commit.
+  const amendBase = config.amend ? "HEAD~1" : undefined;
+  const writeTarget: WriteTarget = config.amend
+    ? { kind: "amend" }
+    : { kind: "commit" };
+
   // -- COMMITLINT INTEROP (P3-T4) --
   // Async, so it can't run in the sync getConfig(); fail-open (returns null on
   // any error). Must precede getStagedContext → classifyChanges, which reads it.
@@ -507,7 +541,9 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
 
   // -- PROVIDER SETUP --
   const { model, modelName } = await createModel(config);
-  const recentCommits = getRecentCommits();
+  // In amend mode, skip HEAD itself — it's the message being replaced, so feeding
+  // it back as "recent style" would be circular.
+  const recentCommits = config.amend ? getRecentCommits(3, 1) : getRecentCommits();
   const initialCommit = isInitialCommit();
 
   printBanner();
@@ -515,7 +551,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   // -- INITIAL CONTEXT --
   let context: StagedContext;
   try {
-    context = await getStagedContext(config, recentCommits);
+    context = await getStagedContext(config, recentCommits, amendBase);
   } catch (err) {
     cancel(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -543,7 +579,10 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
   const stagedContent = [fileListLines, ...warnings]
     .filter(Boolean)
     .join("\n\n");
-  note(stagedContent, `Staged files (${context.fileList.length})`);
+  const fileNoteLabel = config.amend
+    ? `Amending HEAD — ${context.fileList.length} file(s)`
+    : `Staged files (${context.fileList.length})`;
+  note(stagedContent, fileNoteLabel);
 
   // -- SENSITIVE DATA GATE --
   if (context.sensitiveMatches.length > 0) {
@@ -705,7 +744,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         return;
       }
       try {
-        context = await getStagedContext(config, recentCommits);
+        context = await getStagedContext(config, recentCommits, amendBase);
       } catch {
         // keep existing context if refresh fails
       }
@@ -768,7 +807,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         // first so the payload (with `committed`) is the last thing on stdout.
         const committed = config.accept && gate.ok && !config.dryRun;
         if (config.accept && gate.ok) {
-          await commitOrDryRun(result.message, config, modelName);
+          await commitOrDryRun(result.message, config, modelName, writeTarget);
         }
 
         const payload = config.json
@@ -789,7 +828,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         cancel(gate.reason);
         process.exit(gate.code);
       }
-      await commitOrDryRun(result.message, config, modelName);
+      await commitOrDryRun(result.message, config, modelName, writeTarget);
       return;
     }
 
@@ -824,7 +863,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         return;
       }
       if (maxChoice === "accept") {
-        await commitOrDryRun(result.message, config, modelName);
+        await commitOrDryRun(result.message, config, modelName, writeTarget);
         return;
       }
       // edit
@@ -873,7 +912,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
       return;
     }
     if (choice === "accept") {
-      await commitOrDryRun(result.message, config, modelName);
+      await commitOrDryRun(result.message, config, modelName, writeTarget);
       return;
     }
     if (choice === "regenerate") {
@@ -888,7 +927,7 @@ export async function runInteractiveLoop(config: Config): Promise<void> {
         : "Applying corrections...";
       console.log(pc.cyan(`\n${retryMsg}\n`));
       try {
-        context = await getStagedContext(config, recentCommits);
+        context = await getStagedContext(config, recentCommits, amendBase);
       } catch {
         // keep existing context
       }

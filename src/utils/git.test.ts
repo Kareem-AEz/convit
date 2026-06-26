@@ -9,7 +9,13 @@ vi.mock("child_process", () => ({
 }));
 
 import { execFileSync } from "child_process";
-import { excludePathspecs, getStagedDiff, getStagedFiles } from "./git";
+import {
+  excludePathspecs,
+  getRecentCommits,
+  getStagedDiff,
+  getStagedFiles,
+  hasParentCommit,
+} from "./git";
 
 const mockExec = vi.mocked(execFileSync);
 
@@ -90,5 +96,78 @@ describe("getStagedDiff", () => {
       ],
       expect.objectContaining({ encoding: "utf-8" }),
     );
+  });
+});
+
+describe("amend base (P3-T5)", () => {
+  test("getStagedFiles inserts the base ref after -M, before pathspecs", () => {
+    getStagedFiles(["dist"], undefined, "HEAD~1");
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["diff", "--cached", "--name-only", "-M", "HEAD~1", ":(exclude)dist"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("getStagedFiles omits the base ref when none is given (normal commit)", () => {
+    getStagedFiles([]);
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["diff", "--cached", "--name-only", "-M"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("getStagedDiff inserts the base ref before pathspecs", () => {
+    getStagedDiff(["dist"], undefined, "HEAD~1");
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      [
+        "diff",
+        "--cached",
+        "--unified=3",
+        "--no-prefix",
+        "--ignore-space-at-eol",
+        "-M",
+        "HEAD~1",
+        ":(exclude)dist",
+      ],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("getRecentCommits adds --skip when skipping HEAD (amend)", () => {
+    getRecentCommits(3, 1);
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["log", "-3", "--skip=1", "--format=%B%n---"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("getRecentCommits omits --skip by default", () => {
+    getRecentCommits();
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["log", "-3", "--format=%B%n---"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("hasParentCommit is true when rev-parse resolves HEAD~1", () => {
+    mockExec.mockReturnValue("");
+    expect(hasParentCommit()).toBe(true);
+    expect(mockExec).toHaveBeenCalledWith(
+      "git",
+      ["rev-parse", "--verify", "--quiet", "HEAD~1"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
+  });
+
+  test("hasParentCommit is false when rev-parse throws (root commit)", () => {
+    mockExec.mockImplementation(() => {
+      throw new Error("fatal: ambiguous argument 'HEAD~1'");
+    });
+    expect(hasParentCommit()).toBe(false);
   });
 });

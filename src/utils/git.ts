@@ -137,10 +137,21 @@ export function excludePathspecs(exclude: string[]): string[] {
  * Uses `execFileSync` with an argv array — no shell is spawned, so the exclude
  * pathspecs are passed literally (see {@link excludePathspecs}).
  */
-export function getStagedFiles(exclude: string[], cwd?: string): string {
+export function getStagedFiles(
+  exclude: string[],
+  cwd?: string,
+  base?: string,
+): string {
   return execFileSync(
     "git",
-    ["diff", "--cached", "--name-only", "-M", ...excludePathspecs(exclude)],
+    [
+      "diff",
+      "--cached",
+      "--name-only",
+      "-M",
+      ...(base ? [base] : []),
+      ...excludePathspecs(exclude),
+    ],
     { encoding: "utf-8", cwd },
   ).trim();
 }
@@ -151,7 +162,11 @@ export function getStagedFiles(exclude: string[], cwd?: string): string {
  * Uses `execFileSync` with an argv array — no shell is spawned, so the exclude
  * pathspecs are passed literally (see {@link excludePathspecs}).
  */
-export function getStagedDiff(exclude: string[], cwd?: string): string {
+export function getStagedDiff(
+  exclude: string[],
+  cwd?: string,
+  base?: string,
+): string {
   return execFileSync(
     "git",
     [
@@ -161,6 +176,7 @@ export function getStagedDiff(exclude: string[], cwd?: string): string {
       "--no-prefix",
       "--ignore-space-at-eol",
       "-M",
+      ...(base ? [base] : []),
       ...excludePathspecs(exclude),
     ],
     { encoding: "utf-8", cwd },
@@ -196,11 +212,19 @@ function parseNumstat(
 export function getFormattingOnlyFiles(
   exclude: string[],
   cwd?: string,
+  base?: string,
 ): Set<string> {
   const numstat = (extra: string[]) =>
     execFileSync(
       "git",
-      ["diff", "--cached", "--numstat", ...extra, ...excludePathspecs(exclude)],
+      [
+        "diff",
+        "--cached",
+        "--numstat",
+        ...extra,
+        ...(base ? [base] : []),
+        ...excludePathspecs(exclude),
+      ],
       { encoding: "utf-8", cwd },
     );
 
@@ -235,13 +259,31 @@ export function getFormattingOnlyFiles(
  * adopts the repo's existing commit tone globally rather than treating it as
  * example data to copy literally.
  */
-export function getRecentCommits(n: number = 3): string {
+export function getRecentCommits(n: number = 3, skip: number = 0): string {
   try {
-    const out = execFileSync("git", ["log", `-${n}`, "--format=%B%n---"], {
-      encoding: "utf-8",
-    }).trim();
+    const out = execFileSync(
+      "git",
+      ["log", `-${n}`, ...(skip > 0 ? [`--skip=${skip}`] : []), "--format=%B%n---"],
+      { encoding: "utf-8" },
+    ).trim();
     return out.endsWith("---") ? out.slice(0, -3).trim() : out;
   } catch {
     return "";
+  }
+}
+
+/**
+ * Whether HEAD has a parent — i.e. there is a commit to diff against and amend
+ * onto. False for the root commit (which has no `HEAD~1`) and for an empty repo.
+ * Used to refuse `--amend` where `git diff --cached HEAD~1` would have no base.
+ */
+export function hasParentCommit(): boolean {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", "HEAD~1"], {
+      encoding: "utf-8",
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
