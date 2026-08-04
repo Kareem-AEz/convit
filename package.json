@@ -53,11 +53,11 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^2.0.33",
-    "@clack/prompts": "^1.1.0",
-    "ai": "^6.0.111",
-    "cosmiconfig": "^9.0.1",
-    "dotenv": "^17.3.1",
+    "@ai-sdk/openai-compatible": "^2.0.63",
+    "@clack/prompts": "^1.7.0",
+    "ai": "^6.0.241",
+    "cosmiconfig": "^9.0.2",
+    "dotenv": "^17.4.2",
     "js-tiktoken": "^1.0.21",
     "picocolors": "^1.1.1"
   },
@@ -73,10 +73,10 @@
     "@commitlint/config-conventional": "^19.8.1",
     "@commitlint/load": "^19.8.1",
     "@types/node": "^25",
-    "prettier": "^3.8.1",
+    "prettier": "^3.9.6",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.5",
     "typescript": "^5",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
