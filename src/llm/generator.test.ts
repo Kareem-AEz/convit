@@ -247,6 +247,29 @@ test("appendTrailers drops empty/whitespace-only entries (and joins multiple)", 
   );
 });
 
+// A repo that dog-foods convit has the trailer in every recent commit, so the
+// model can echo one back inside the message body. Appending blindly then
+// produced two identical `Generated-with:` lines in the final commit.
+test("appendTrailers does not duplicate a trailer the message already has", () => {
+  const trailer = "Generated-with: convit (https://github.com/Kareem-AEz/convit)";
+  const echoed = `${body}\n\n${trailer}`;
+  expect(appendTrailers(echoed, [trailer])).toBe(echoed);
+});
+
+test("appendTrailers still adds the trailers that are genuinely missing", () => {
+  const withOne = `${body}\n\nGenerated-with: convit`;
+  expect(
+    appendTrailers(withOne, ["Generated-with: convit", "Signed-off-by: Jane"]),
+  ).toBe(`${withOne}\n\nSigned-off-by: Jane`);
+});
+
+test("appendTrailers dedupes after {model} expansion, not before", () => {
+  const echoed = `${body}\n\nGenerated-with: convit (deepseek)`;
+  expect(
+    appendTrailers(echoed, ["Generated-with: convit ({model})"], "deepseek"),
+  ).toBe(echoed);
+});
+
 test("expandTrailers resolves {model}, drops empties, and mirrors appendTrailers", () => {
   expect(expandTrailers(["Generated-with: convit ({model})"], "deepseek")).toEqual(
     ["Generated-with: convit (deepseek)"],

@@ -101,6 +101,55 @@ describe("getStagedDiff", () => {
   });
 });
 
+describe("getRecentCommits trailer stripping", () => {
+  // Recent commits are style context. In a repo that dog-foods convit they all
+  // end in `Generated-with:`, so leaving trailers in taught the model to emit
+  // one — which appendTrailers then appended again (duplicated trailer).
+  const trailer = "Generated-with: convit (https://github.com/Kareem-AEz/convit)";
+
+  test("drops the trailer paragraph from each commit", () => {
+    mockExec.mockReturnValue(
+      `feat(core): add a thing\n\n- because reasons\n\n${trailer}\n---\n` +
+        `fix(cli): repair a thing\n\n${trailer}\n---\n`,
+    );
+    expect(getRecentCommits()).toBe(
+      "feat(core): add a thing\n\n- because reasons\n---\nfix(cli): repair a thing",
+    );
+  });
+
+  test("keeps a header-only commit intact", () => {
+    // `chore: bump deps` matches the trailer shape but is the commit itself.
+    mockExec.mockReturnValue("chore: bump deps\n---\n");
+    expect(getRecentCommits()).toBe("chore: bump deps");
+  });
+
+  test("keeps a body whose last paragraph is prose, not trailers", () => {
+    mockExec.mockReturnValue("feat: x\n\n- a bullet\n\nplain prose tail\n---\n");
+    expect(getRecentCommits()).toBe("feat: x\n\n- a bullet\n\nplain prose tail");
+  });
+
+  test("strips a multi-line trailer block but not a mixed one", () => {
+    mockExec.mockReturnValue(`feat: x\n\n- a\n\n${trailer}\nSigned-off-by: Jane\n---\n`);
+    expect(getRecentCommits()).toBe("feat: x\n\n- a");
+
+    mockExec.mockReturnValue(`feat: y\n\n- a\n\nnot a trailer\n${trailer}\n---\n`);
+    expect(getRecentCommits()).toBe(`feat: y\n\n- a\n\nnot a trailer\n${trailer}`);
+  });
+
+  test("strips repeated trailer paragraphs from pre-fix history", () => {
+    // Commits written before the duplicate-trailer fix carry two.
+    mockExec.mockReturnValue(`feat: x\n\n- a bullet\n\n${trailer}\n\n${trailer}\n---\n`);
+    expect(getRecentCommits()).toBe("feat: x\n\n- a bullet");
+  });
+
+  test("returns empty string when git fails", () => {
+    mockExec.mockImplementation(() => {
+      throw new Error("fatal: your current branch does not have any commits");
+    });
+    expect(getRecentCommits()).toBe("");
+  });
+});
+
 describe("stdout buffer ceiling", () => {
   // Node defaults execFileSync's maxBuffer to 1 MiB; git overflows that on any
   // sizeable staged change and spawnSync fails with ENOBUFS. Every git call

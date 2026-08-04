@@ -142,7 +142,17 @@ export function appendTrailers(
 ): string {
   const expanded = expandTrailers(trailers, model);
   if (expanded.length === 0) return message;
-  return `${message.trimEnd()}\n\n${expanded.join("\n")}`;
+
+  // Don't re-append a trailer the message already carries. `getRecentCommits`
+  // strips trailers from the style context so the model shouldn't emit one, but
+  // a model can still echo a trailer it saw in the diff or the user can type one
+  // while editing — and a duplicated `Generated-with:` in the final commit is
+  // the visible symptom either way.
+  const present = new Set(message.split("\n").map((l) => l.trim()));
+  const missing = expanded.filter((t) => !present.has(t));
+  if (missing.length === 0) return message.trimEnd();
+
+  return `${message.trimEnd()}\n\n${missing.join("\n")}`;
 }
 
 /**

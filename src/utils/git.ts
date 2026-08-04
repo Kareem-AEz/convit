@@ -300,6 +300,43 @@ export function getFormattingOnlyFiles(
  * adopts the repo's existing commit tone globally rather than treating it as
  * example data to copy literally.
  */
+/** A `Key: value` git trailer line (`Generated-with:`, `Co-authored-by:`, …). */
+const TRAILER_LINE_RE = /^[A-Za-z][A-Za-z0-9-]*:\s.+$/;
+
+/**
+ * Drops a trailing git-trailer paragraph from a commit message.
+ *
+ * Recent commits are style context, and in a repo that dog-foods convit every
+ * one of them ends in the configured `commit.trailers`. Left in, the model
+ * reads them as part of the house style and emits its own copy — which
+ * `appendTrailers` then appends again, producing a duplicated trailer.
+ *
+ * A paragraph qualifies only when *every* line in it is a trailer, and a
+ * single-paragraph message is never stripped — a bare header like
+ * `chore: bump deps` matches the trailer shape but is obviously the commit
+ * itself. Unlike `git interpret-trailers` this repeats: history written before
+ * the duplicate-trailer fix has two trailer paragraphs, and the goal here is
+ * that the model sees none of them.
+ */
+function stripTrailerBlock(message: string): string {
+  let lines = message.split("\n");
+
+  for (;;) {
+    let end = lines.length;
+    while (end > 0 && lines[end - 1].trim() === "") end--;
+
+    let start = end;
+    while (start > 0 && lines[start - 1].trim() !== "") start--;
+    if (start === 0) break; // one paragraph left — that's the subject
+
+    const block = lines.slice(start, end);
+    if (!block.every((l) => TRAILER_LINE_RE.test(l.trim()))) break;
+    lines = lines.slice(0, start);
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
 export function getRecentCommits(n: number = 3, skip: number = 0): string {
   try {
     const out = execFileSync(
@@ -307,7 +344,12 @@ export function getRecentCommits(n: number = 3, skip: number = 0): string {
       ["log", `-${n}`, ...(skip > 0 ? [`--skip=${skip}`] : []), "--format=%B%n---"],
       GIT_EXEC_OPTS,
     ).trim();
-    return out.endsWith("---") ? out.slice(0, -3).trim() : out;
+    const body = out.endsWith("---") ? out.slice(0, -3).trim() : out;
+    return body
+      .split(/^---$/m)
+      .map((m) => stripTrailerBlock(m.trim()))
+      .filter(Boolean)
+      .join("\n---\n");
   } catch {
     return "";
   }
