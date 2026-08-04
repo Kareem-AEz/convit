@@ -53,9 +53,9 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^2.0.63",
+    "@ai-sdk/openai-compatible": "^3.0.22",
     "@clack/prompts": "^1.7.0",
-    "ai": "^6.0.241",
+    "ai": "^7.0.51",
     "cosmiconfig": "^9.0.2",
     "dotenv": "^17.4.2",
     "js-tiktoken": "^1.0.21",
