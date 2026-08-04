@@ -56,7 +56,7 @@
     "@ai-sdk/openai-compatible": "^3.0.22",
     "@clack/prompts": "^1.7.0",
     "ai": "^7.0.51",
-    "cosmiconfig": "^9.0.2",
+    "cosmiconfig": "^10.0.0",
     "dotenv": "^17.4.2",
     "js-tiktoken": "^1.0.21",
     "picocolors": "^1.1.1"
@@ -70,8 +70,8 @@
     }
   },
   "devDependencies": {
-    "@commitlint/config-conventional": "^19.8.1",
-    "@commitlint/load": "^19.8.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@commitlint/load": "^21.2.0",
     "@types/node": "^26.1.2",
     "prettier": "^3.9.6",
     "tsup": "^8.5.1",
