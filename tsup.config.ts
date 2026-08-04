@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["bin/convit.ts"],
   format: ["esm"], // Since package is "type": "module"
-  target: "node20",
+  target: "node22",
   clean: true,
   minify: true,
   treeshake: true,

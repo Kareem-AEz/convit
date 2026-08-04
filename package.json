@@ -50,7 +50,7 @@
     "prepublishOnly": "npm run type:check && npm run test && npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.63",
