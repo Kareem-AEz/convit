@@ -9,8 +9,10 @@ vi.mock("child_process", () => ({
 }));
 
 import { execFileSync } from "child_process";
+import { GIT_MAX_BUFFER_BYTES } from "../config/defaults";
 import {
   excludePathspecs,
+  getFormattingOnlyFiles,
   getRecentCommits,
   getStagedDiff,
   getStagedFiles,
@@ -96,6 +98,55 @@ describe("getStagedDiff", () => {
       ],
       expect.objectContaining({ encoding: "utf-8" }),
     );
+  });
+});
+
+describe("stdout buffer ceiling", () => {
+  // Node defaults execFileSync's maxBuffer to 1 MiB; git overflows that on any
+  // sizeable staged change and spawnSync fails with ENOBUFS. Every git call
+  // that can return unbounded output must raise the ceiling explicitly.
+  const NODE_DEFAULT_MAX_BUFFER = 1024 * 1024;
+
+  test("GIT_MAX_BUFFER_BYTES is above Node's 1 MiB default and finite", () => {
+    expect(GIT_MAX_BUFFER_BYTES).toBeGreaterThan(NODE_DEFAULT_MAX_BUFFER);
+    expect(Number.isFinite(GIT_MAX_BUFFER_BYTES)).toBe(true);
+  });
+
+  test.each([
+    ["getStagedDiff", () => getStagedDiff([])],
+    ["getStagedFiles", () => getStagedFiles([])],
+    ["getFormattingOnlyFiles", () => getFormattingOnlyFiles([])],
+    ["getRecentCommits", () => getRecentCommits()],
+  ])("%s raises maxBuffer past the default", (_name, call) => {
+    call();
+    expect(mockExec).toHaveBeenCalled();
+    for (const [, , options] of mockExec.mock.calls) {
+      expect((options as { maxBuffer?: number })?.maxBuffer).toBe(
+        GIT_MAX_BUFFER_BYTES,
+      );
+    }
+  });
+
+  test.each([
+    ["getStagedDiff", () => getStagedDiff([]), /staged diff is too large/],
+    ["getStagedFiles", () => getStagedFiles([]), /staged file list is too large/],
+  ])("%s turns ENOBUFS into an actionable error", (_name, call, message) => {
+    mockExec.mockImplementation(() => {
+      throw Object.assign(new Error("spawnSync git ENOBUFS"), {
+        code: "ENOBUFS",
+      });
+    });
+    // Never a truncated diff: what the secret scanner reads must be exactly
+    // what reaches the model, so an overflow has to be fatal.
+    expect(call).toThrow(message);
+    expect(call).toThrow(/\.convitrc\.json/);
+  });
+
+  test("a non-ENOBUFS git failure propagates unchanged", () => {
+    mockExec.mockImplementation(() => {
+      throw new Error("fatal: bad revision");
+    });
+    expect(() => getStagedDiff([])).toThrow("fatal: bad revision");
   });
 });
 

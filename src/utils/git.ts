@@ -8,9 +8,40 @@
 // =============================================================================
 
 import { execFileSync } from "child_process";
-import { DEFAULT_MODEL } from "../config/defaults";
+import { DEFAULT_MODEL, GIT_MAX_BUFFER_BYTES } from "../config/defaults";
 import { isLocalUrl } from "./url";
 import type { Config } from "../types";
+
+/**
+ * Shared `execFileSync` options for every git call.
+ *
+ * The explicit `maxBuffer` is load-bearing: Node defaults it to 1 MiB, and git
+ * blows past that on any sizeable staged change — surfacing as the opaque
+ * `spawnSync git ENOBUFS`. See {@link GIT_MAX_BUFFER_BYTES}.
+ */
+const GIT_EXEC_OPTS = {
+  encoding: "utf-8",
+  maxBuffer: GIT_MAX_BUFFER_BYTES,
+} as const;
+
+/**
+ * Converts an stdout-overflow failure into an actionable error.
+ *
+ * Deliberately fatal rather than degrading to a truncated diff: `summarizeDiff`
+ * builds the model's context from the same string `detectSensitiveData` scans,
+ * so a partial read would mean sending bytes that were never scanned for
+ * secrets. Anything that is not an overflow is rethrown untouched.
+ */
+function rethrowOversizedGitOutput(err: unknown, what: string): never {
+  if ((err as NodeJS.ErrnoException)?.code !== "ENOBUFS") throw err;
+
+  const mb = Math.round(GIT_MAX_BUFFER_BYTES / (1024 * 1024));
+  throw new Error(
+    `The ${what} is too large for convit to read (over ${mb} MB).\n\n` +
+      "Generated or vendored files are the usual cause. Add them to `exclude`\n" +
+      "in .convitrc.json, or stage this change in smaller commits.",
+  );
+}
 
 /**
  * Resolves the model ID to use for generation.
@@ -108,9 +139,11 @@ export function verifyGitRepo(): void {
  */
 export function isInitialCommit(): boolean {
   try {
-    const count = execFileSync("git", ["rev-list", "--count", "HEAD"], {
-      encoding: "utf-8",
-    }).trim();
+    const count = execFileSync(
+      "git",
+      ["rev-list", "--count", "HEAD"],
+      GIT_EXEC_OPTS,
+    ).trim();
     return count === "" || count === "0";
   } catch {
     return true;
@@ -142,18 +175,22 @@ export function getStagedFiles(
   cwd?: string,
   base?: string,
 ): string {
-  return execFileSync(
-    "git",
-    [
-      "diff",
-      "--cached",
-      "--name-only",
-      "-M",
-      ...(base ? [base] : []),
-      ...excludePathspecs(exclude),
-    ],
-    { encoding: "utf-8", cwd },
-  ).trim();
+  try {
+    return execFileSync(
+      "git",
+      [
+        "diff",
+        "--cached",
+        "--name-only",
+        "-M",
+        ...(base ? [base] : []),
+        ...excludePathspecs(exclude),
+      ],
+      { ...GIT_EXEC_OPTS, cwd },
+    ).trim();
+  } catch (err) {
+    rethrowOversizedGitOutput(err, "staged file list");
+  }
 }
 
 /**
@@ -167,20 +204,24 @@ export function getStagedDiff(
   cwd?: string,
   base?: string,
 ): string {
-  return execFileSync(
-    "git",
-    [
-      "diff",
-      "--cached",
-      "--unified=3",
-      "--no-prefix",
-      "--ignore-space-at-eol",
-      "-M",
-      ...(base ? [base] : []),
-      ...excludePathspecs(exclude),
-    ],
-    { encoding: "utf-8", cwd },
-  );
+  try {
+    return execFileSync(
+      "git",
+      [
+        "diff",
+        "--cached",
+        "--unified=3",
+        "--no-prefix",
+        "--ignore-space-at-eol",
+        "-M",
+        ...(base ? [base] : []),
+        ...excludePathspecs(exclude),
+      ],
+      { ...GIT_EXEC_OPTS, cwd },
+    );
+  } catch (err) {
+    rethrowOversizedGitOutput(err, "staged diff");
+  }
 }
 
 /**
@@ -225,7 +266,7 @@ export function getFormattingOnlyFiles(
         ...(base ? [base] : []),
         ...excludePathspecs(exclude),
       ],
-      { encoding: "utf-8", cwd },
+      { ...GIT_EXEC_OPTS, cwd },
     );
 
   try {
@@ -264,7 +305,7 @@ export function getRecentCommits(n: number = 3, skip: number = 0): string {
     const out = execFileSync(
       "git",
       ["log", `-${n}`, ...(skip > 0 ? [`--skip=${skip}`] : []), "--format=%B%n---"],
-      { encoding: "utf-8" },
+      GIT_EXEC_OPTS,
     ).trim();
     return out.endsWith("---") ? out.slice(0, -3).trim() : out;
   } catch {
@@ -279,9 +320,11 @@ export function getRecentCommits(n: number = 3, skip: number = 0): string {
  */
 export function hasParentCommit(): boolean {
   try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", "HEAD~1"], {
-      encoding: "utf-8",
-    });
+    execFileSync(
+      "git",
+      ["rev-parse", "--verify", "--quiet", "HEAD~1"],
+      GIT_EXEC_OPTS,
+    );
     return true;
   } catch {
     return false;

@@ -81,6 +81,17 @@ export const EXCLUDED_FILES = [
   ".pytest_cache/",
 ];
 
+/**
+ * Max bytes of stdout convit will read from a single `git` subprocess.
+ *
+ * Node's default `maxBuffer` for `execFileSync` is 1 MiB — small enough that an
+ * ordinary large staged change (a lockfile-sized rewrite, a vendored directory,
+ * a bulk refactor) makes git overflow it and `spawnSync git ENOBUFS` escapes as
+ * an opaque crash. 64 MiB clears any realistic diff while staying finite:
+ * `Infinity` would trade a clean error for an out-of-memory kill.
+ */
+export const GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
 /** Characters threshold before diff compression activates */
 export const COMPRESSION_THRESHOLD = 10_000;
 
