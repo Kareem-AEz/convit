@@ -240,21 +240,31 @@ class UnusableStructuredOutput extends Error {}
  * if it can't be made valid — and an empty type/subject is a generation failure.
  */
 export function assembleCommitMessage(output: StructuredCommit): string {
-  const type = output.type.trim();
-  const subject = output.subject.trim();
+  // `jsonSchema<StructuredCommit>()` is a compile-time cast, not a runtime
+  // guard: the AI SDK hands back whatever JSON the endpoint produced. A local
+  // model that ignores the schema (omits `type`, nests the object, returns a
+  // number) would otherwise throw a raw TypeError here — which
+  // `shouldFallbackToFreeText` doesn't recognize, turning a recoverable
+  // schema miss into a fatal "Generation failed". Read every field defensively
+  // so a malformed object routes to the free-text path instead.
+  const shape = (output ?? {}) as Partial<StructuredCommit>;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+  const type = str(shape.type);
+  const subject = str(shape.subject);
   if (!type || !subject) {
     throw new UnusableStructuredOutput(
       "Structured output missing a type or subject.",
     );
   }
 
-  const rawScope = (output.scope ?? "").trim().toLowerCase();
+  const rawScope = str(shape.scope).toLowerCase();
   const scope = /^[a-z0-9-]+$/.test(rawScope) ? rawScope : "";
-  const breaking = output.breaking ? "!" : "";
+  const breaking = shape.breaking ? "!" : "";
   const header = `${type}${scope ? `(${scope})` : ""}${breaking}: ${subject}`;
 
-  const bullets = (output.body ?? [])
-    .map((b) => b.trim().replace(/^[-*]\s*/, "")) // strip any leading marker
+  const bullets = (Array.isArray(shape.body) ? shape.body : [])
+    .map((b) => str(b).replace(/^[-*]\s*/, "")) // strip any leading marker
     .filter(Boolean)
     .map((b) => `- ${b}`);
 

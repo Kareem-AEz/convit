@@ -85,6 +85,37 @@ test("an unusable structured result routes to the free-text fallback", () => {
   expect(shouldFallbackToFreeText(caught)).toBe(true);
 });
 
+// `jsonSchema<StructuredCommit>()` only types the result — it does not validate
+// it, so a model that ignores the schema hands these shapes straight to
+// assembly. Each must route to the free-text fallback, never a raw TypeError
+// (which `shouldFallbackToFreeText` rejects, hard-failing the whole run).
+test.each([
+  ["a missing type", { ...baseStructured, type: undefined }],
+  ["a missing subject", { ...baseStructured, subject: undefined }],
+  ["a non-string type", { ...baseStructured, type: 42 }],
+  ["an entirely empty object", {}],
+  ["null", null],
+])("unschema'd structured output (%s) falls back, not crashes", (_name, bad) => {
+  let caught: unknown;
+  try {
+    assembleCommitMessage(bad as never);
+  } catch (e) {
+    caught = e;
+  }
+  expect(caught).toBeInstanceOf(Error);
+  expect((caught as Error).constructor.name).not.toBe("TypeError");
+  expect(shouldFallbackToFreeText(caught)).toBe(true);
+});
+
+test("a non-array body and non-string bullets are tolerated", () => {
+  expect(assembleCommitMessage({ ...baseStructured, body: "not an array" } as never)).toBe(
+    "feat(core): add structured generation",
+  );
+  expect(
+    assembleCommitMessage({ ...baseStructured, body: [null, 7, "real bullet"] } as never),
+  ).toBe("feat(core): add structured generation\n\n- real bullet");
+});
+
 test("an unrelated error does not trigger the free-text fallback", () => {
   expect(shouldFallbackToFreeText(new Error("connection reset"))).toBe(false);
 });
